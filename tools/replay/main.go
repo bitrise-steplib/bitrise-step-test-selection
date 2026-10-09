@@ -74,7 +74,7 @@ func main() {
 		}
 		cfg := step.Config{
 			ChangedFiles:         strings.Join(files, "\n"),
-			ChangedFilesComplete: true,
+			ChangedFilesComplete: "true",
 			ProjectType:          "auto",
 			ProjectPath:          *project,
 			Scheme:               *scheme,

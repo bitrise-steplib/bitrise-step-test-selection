@@ -43,10 +43,7 @@ inputs:
     description: |-
       Whether `changed_files` holds every changed file. Webhook payloads are truncated for very
       large changes; when this is `false` (or unset) and `base_ref` is set, the step diffs with
-      git instead of trusting the list.
-    value_options:
-    - "true"
-    - "false"
+      git instead of trusting the list. Unset on manual builds.
 - base_ref: $BITRISEIO_GIT_BRANCH_DEST
   opts:
     category: Change

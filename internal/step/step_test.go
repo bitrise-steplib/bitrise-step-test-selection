@@ -34,7 +34,7 @@ func flutterRepo(t *testing.T) string {
 }
 
 func base(root string) Config {
-	return Config{ProjectType: "auto", ChangedFilesComplete: true, OnUnknownFile: "full", Mode: "enforce", OnError: "full", RepoDir: root}
+	return Config{ProjectType: "auto", ChangedFilesComplete: "true", OnUnknownFile: "full", Mode: "enforce", OnError: "full", RepoDir: root}
 }
 
 func selected(res selection.Result) map[string]bool {
@@ -143,7 +143,7 @@ func TestIncompleteListWithoutGitFallsBackToFull(t *testing.T) {
 	root := flutterRepo(t)
 	cfg := base(root)
 	cfg.ChangedFiles = "packages/ui/lib/button.dart\n"
-	cfg.ChangedFilesComplete = false
+	cfg.ChangedFilesComplete = ""
 	res, err := Run(cfg, Deps{})
 	if err != nil {
 		t.Fatal(err)

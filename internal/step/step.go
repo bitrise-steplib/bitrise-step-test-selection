@@ -22,7 +22,7 @@ import (
 // Config holds the step inputs.
 type Config struct {
 	ChangedFiles         string `env:"changed_files"`
-	ChangedFilesComplete bool   `env:"changed_files_complete,opt[true,false]"`
+	ChangedFilesComplete string `env:"changed_files_complete"`
 	BaseRef              string `env:"base_ref"`
 	ProjectType          string `env:"project_type,opt[auto,xcode,gradle,flutter,manual]"`
 	ProjectPath          string `env:"project_path"`
@@ -229,7 +229,7 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 func resolveChanges(cfg Config, baseRef, root string, deps Deps, warn func(string, ...interface{})) changes.Result {
 	fromEnv := changes.Result{Origin: "none", Detail: "no changed file list was supplied"}
 	if strings.TrimSpace(cfg.ChangedFiles) != "" {
-		fromEnv = changes.FromList(cfg.ChangedFiles, cfg.ChangedFilesComplete)
+		fromEnv = changes.FromList(cfg.ChangedFiles, strings.EqualFold(strings.TrimSpace(cfg.ChangedFilesComplete), "true"))
 		if fromEnv.Complete {
 			return fromEnv
 		}
