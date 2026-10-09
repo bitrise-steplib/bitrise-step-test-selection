@@ -212,4 +212,4 @@ outputs:
 - BITRISE_TEST_SELECTION_SUMMARY:
   opts:
     title: Summary
-    summary: One line for build annotations, for example `selected: 3 of 12 test units selected`.
+    summary: 'One line for build annotations, for example `selected: 3 of 12 test units selected`.'
