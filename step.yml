@@ -1,0 +1,215 @@
+title: Test Selection
+summary: Works out which test targets a change affects, so the test steps can run only those.
+description: |-
+  Maps the changed files of the build onto the project's dependency graph and writes the
+  list of affected test units. The test steps read the list through their `test_selection`
+  input; Xcode Test without building can consume the `xcode-only-testing.txt` file directly
+  through `only_testing`.
+
+  Supported projects: Xcode workspaces and projects with local Swift packages, Gradle builds
+  (the module graph is dumped with an init script), Flutter and Dart packages, and manual
+  glob-to-test rules for anything else. Several may apply to one repository.
+
+  The selection is a safe over-approximation at the target or module level. Any change to a
+  file that influences every test (lockfiles, xcconfig, root Gradle files, bitrise.yml) and any
+  analysis error produce a full run instead of a guess, and the reason is written to the log
+  and to the JSON.
+website: https://github.com/bitrise-steplib/bitrise-step-test-selection
+source_code_url: https://github.com/bitrise-steplib/bitrise-step-test-selection
+support_url: https://github.com/bitrise-steplib/bitrise-step-test-selection/issues
+
+type_tags:
+- test
+
+toolkit:
+  go:
+    package_name: github.com/bitrise-steplib/bitrise-step-test-selection
+
+inputs:
+- changed_files: $BITRISE_GIT_CHANGED_FILES
+  opts:
+    category: Change
+    title: Changed files
+    summary: Newline-separated list of changed files, relative to the repository root.
+    description: |-
+      Newline-separated list of changed files, relative to the repository root. The Bitrise
+      backend fills `BITRISE_GIT_CHANGED_FILES` from the webhook. When the list is missing or
+      marked incomplete, the step diffs against `base_ref` instead.
+- changed_files_complete: $BITRISE_GIT_CHANGED_FILES_COMPLETE
+  opts:
+    category: Change
+    title: Changed file list is complete
+    summary: Whether the supplied list is trusted as complete.
+    description: |-
+      Whether `changed_files` holds every changed file. Webhook payloads are truncated for very
+      large changes; when this is `false` (or unset) and `base_ref` is set, the step diffs with
+      git instead of trusting the list.
+    value_options:
+    - "true"
+    - "false"
+- base_ref: $BITRISEIO_GIT_BRANCH_DEST
+  opts:
+    category: Change
+    title: Base ref
+    summary: Branch, remote ref or commit to diff against when the changed file list is missing or incomplete.
+    description: |-
+      Branch, remote ref or commit the change is compared to. For pull requests this is the
+      destination branch. The step finds the merge base with `HEAD`, deepening a shallow clone
+      as needed. Leave empty to rely on `changed_files` only.
+
+- project_type: auto
+  opts:
+    category: Project
+    title: Project type
+    summary: Which analyser to run. `auto` runs every one whose inputs point at an existing project.
+    value_options:
+    - auto
+    - xcode
+    - gradle
+    - flutter
+    - manual
+- project_path: $BITRISE_PROJECT_PATH
+  opts:
+    category: Project
+    title: Xcode project or workspace path
+    summary: Path of the `.xcworkspace` or `.xcodeproj`, relative to the repository root.
+- scheme: $BITRISE_SCHEME
+  opts:
+    category: Project
+    title: Xcode scheme
+    summary: Restricts the candidate test targets to the scheme's testables (or test plans).
+    description: |-
+      When set and found, only the test targets the scheme (or its test plans) runs are
+      candidates. Leave empty to consider every test target.
+- gradle_project_dir: ""
+  opts:
+    category: Project
+    title: Gradle project directory
+    summary: Directory of the Gradle root project, relative to the repository root. Empty means the root.
+- gradlew_path: gradlew
+  opts:
+    category: Project
+    title: Gradle wrapper path
+    summary: The wrapper script, relative to the Gradle project directory.
+- gradle_options: ""
+  opts:
+    category: Project
+    title: Extra Gradle options
+    summary: Space-separated options appended to the graph dump invocation, for example `--offline`.
+- flutter_project_dir: ""
+  opts:
+    category: Project
+    title: Flutter project directory
+    summary: Directory scanned for `pubspec.yaml` files, relative to the repository root. Empty means the root.
+- manual_rules: ""
+  opts:
+    category: Project
+    title: Manual rules
+    summary: One `glob => TestName, OtherTest` rule per line for projects the analysers do not cover.
+    description: |-
+      One rule per line: a doublestar glob, `=>`, then a comma-separated list of test unit
+      names. A changed file matching the glob selects every listed test. The names are used
+      as-is in the output, so name them the way the consuming step expects (for xcodebuild,
+      the test target name).
+
+- config: $BITRISE_TEST_SELECTION_CONFIG_JSON
+  opts:
+    category: Rules
+    title: Backend configuration
+    summary: JSON injected by Bitrise with the app's selection settings.
+    description: |-
+      JSON with the keys `mode`, `must_run`, `full_run_paths`, `ignore_paths`,
+      `on_unknown_file`, `base_ref`, `force_full_run` and `force_full_run_reason`. Lists are
+      merged with the inputs; scalar settings override them.
+- full_run_paths: ""
+  opts:
+    category: Rules
+    title: Full-run paths
+    summary: Globs of files whose change makes every test run, in addition to the built-in list.
+    description: |-
+      Newline-separated globs. A changed file matching one forces a full run. The built-in
+      list covers bitrise.yml, Podfile and Package.resolved, xcconfig and xctestplan files,
+      the root Gradle files and wrapper, buildSrc, lockfiles and the Ruby toolchain files.
+- ignore_paths: ""
+  opts:
+    category: Rules
+    title: Ignored paths
+    summary: Globs of files that never affect a test, in addition to docs, markdown and GitHub metadata.
+- must_run: ""
+  opts:
+    category: Rules
+    title: Must-run tests
+    summary: Globs on test unit names (or IDs, when they contain a colon) that are always selected.
+- on_unknown_file: full
+  opts:
+    category: Rules
+    title: When a changed file belongs to no build unit
+    summary: Force a full run (safe) or ignore the file.
+    value_options:
+    - full
+    - ignore
+- mode: enforce
+  opts:
+    category: Rules
+    title: Mode
+    summary: In shadow mode the consuming steps run everything and only annotate what would have been skipped.
+    value_options:
+    - enforce
+    - shadow
+- on_error: full
+  opts:
+    category: Rules
+    title: When the analysis fails
+    summary: Fall back to a full run, or fail the step.
+    value_options:
+    - full
+    - fail
+
+- repo_dir: $BITRISE_SOURCE_DIR
+  opts:
+    category: Output
+    title: Repository directory
+    summary: The checked-out repository. Every path is resolved relative to it.
+    is_required: true
+- output_dir: $BITRISE_DEPLOY_DIR/test-selection
+  opts:
+    category: Output
+    title: Output directory
+    summary: Where the JSON and the per-ecosystem list files are written.
+- verbose: "false"
+  opts:
+    category: Output
+    title: Verbose logging
+    value_options:
+    - "true"
+    - "false"
+
+outputs:
+- BITRISE_TEST_SELECTION_PATH:
+  opts:
+    title: Selection JSON path
+    summary: The full result, including every candidate test with its decision and reason.
+- BITRISE_TEST_SELECTION_MODE:
+  opts:
+    title: Mode
+    summary: "`selected` when only the listed tests need to run, `full` when everything must run."
+- BITRISE_TEST_SELECTION_SHADOW:
+  opts:
+    title: Shadow
+    summary: "`true` when consumers must run everything and only annotate."
+- BITRISE_TEST_SELECTION_XCODE_ONLY_TESTING_PATH:
+  opts:
+    title: Xcode only-testing file
+    summary: Newline-separated test target names for the `only_testing` input of Xcode Test without building. Not set in full mode.
+- BITRISE_TEST_SELECTION_GRADLE_MODULES_PATH:
+  opts:
+    title: Gradle modules file
+    summary: Newline-separated Gradle project paths whose tests are selected. Not set in full mode.
+- BITRISE_TEST_SELECTION_FLUTTER_PACKAGES_PATH:
+  opts:
+    title: Flutter packages file
+    summary: Newline-separated package directories whose tests are selected. Not set in full mode.
+- BITRISE_TEST_SELECTION_SUMMARY:
+  opts:
+    title: Summary
+    summary: One line for build annotations, for example `selected: 3 of 12 test units selected`.

@@ -1,0 +1,5 @@
+/bitrise-step-test-selection
+*.test
+/_tmp/
+/.bitrise*/
+.DS_Store
