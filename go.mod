@@ -1,6 +1,6 @@
 module github.com/bitrise-steplib/bitrise-step-test-selection
 
-go 1.24
+go 1.22
 
 require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.55
