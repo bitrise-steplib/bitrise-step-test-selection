@@ -108,7 +108,7 @@ func TestBuildFromDump(t *testing.T) {
 	if n := g.Node("gradle::core:unitTest"); n.Meta["task"] != ":core:test" {
 		t.Errorf("jvm task %q", n.Meta["task"])
 	}
-	if n := g.Node("gradle::app:unitTest"); n.Meta["task"] != "" {
-		t.Errorf("android task should be left to the step, got %q", n.Meta["task"])
+	if n := g.Node("gradle::app:unitTest"); n.Meta["task"] != ":app:test" {
+		t.Errorf("android task %q", n.Meta["task"])
 	}
 }

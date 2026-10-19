@@ -53,7 +53,7 @@ Any analysis error is a full run with the reason in the log and the JSON, never 
 }
 ```
 
-Next to it, in `selected` mode only: `xcode-only-testing.txt`, `gradle-modules.txt`,
+Next to it, in `selected` mode only: `xcode-only-testing.txt`, `gradle-modules.txt`, `gradle-tasks.txt`,
 `flutter-packages.txt`. In `full` mode no list file is written, because an empty list
 means "everything" to the consuming steps.
 

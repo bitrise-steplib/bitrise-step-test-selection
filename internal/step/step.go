@@ -30,6 +30,7 @@ type Config struct {
 	GradleProjectDir     string `env:"gradle_project_dir"`
 	GradlewPath          string `env:"gradlew_path"`
 	GradleOptions        string `env:"gradle_options"`
+	GradleTestTask       string `env:"gradle_test_task"`
 	FlutterProjectDir    string `env:"flutter_project_dir"`
 	ManualRules          string `env:"manual_rules"`
 	BackendConfig        string `env:"config"`
@@ -289,7 +290,7 @@ func buildGraph(cfg Config, root string, deps Deps) (*graph.Graph, []string, err
 		if deps.Cmd == nil {
 			return nil, nil, fmt.Errorf("gradle: no command runner")
 		}
-		gg, err := gradle.Build(gradle.Options{Root: root, ProjectDir: cfg.GradleProjectDir, Gradlew: gradlew, ExtraArgs: rules.SplitLines(strings.ReplaceAll(cfg.GradleOptions, " ", "\n"))}, deps.Cmd)
+		gg, err := gradle.Build(gradle.Options{Root: root, ProjectDir: cfg.GradleProjectDir, Gradlew: gradlew, ExtraArgs: rules.SplitLines(strings.ReplaceAll(cfg.GradleOptions, " ", "\n")), AndroidUnitTestTask: cfg.GradleTestTask}, deps.Cmd)
 		if err != nil {
 			return nil, nil, fmt.Errorf("gradle: %w", err)
 		}

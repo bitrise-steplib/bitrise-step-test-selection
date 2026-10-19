@@ -121,6 +121,7 @@ type Files struct {
 	JSON             string
 	XcodeOnlyTesting string
 	GradleModules    string
+	GradleTasks      string
 	FlutterPackages  string
 }
 
@@ -141,13 +142,16 @@ func Write(dir string, r Result) (Files, error) {
 	if r.Mode == ModeFull {
 		return files, nil
 	}
-	var xcode, gradle, flutter []string
+	var xcode, gradle, gradleTasks, flutter []string
 	for _, t := range r.Selected() {
 		if t.Ident.OnlyTesting != "" {
 			xcode = append(xcode, t.Ident.OnlyTesting)
 		}
 		if t.Ident.GradleModule != "" {
 			gradle = append(gradle, t.Ident.GradleModule)
+		}
+		if t.Ident.GradleTask != "" {
+			gradleTasks = append(gradleTasks, t.Ident.GradleTask)
 		}
 		if t.Ident.PackageDir != "" {
 			flutter = append(flutter, t.Ident.PackageDir)
@@ -164,6 +168,9 @@ func Write(dir string, r Result) (Files, error) {
 		return files, err
 	}
 	if files.GradleModules, err = write("gradle-modules.txt", gradle); err != nil {
+		return files, err
+	}
+	if files.GradleTasks, err = write("gradle-tasks.txt", gradleTasks); err != nil {
 		return files, err
 	}
 	if files.FlutterPackages, err = write("flutter-packages.txt", flutter); err != nil {

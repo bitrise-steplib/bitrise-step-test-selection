@@ -93,6 +93,16 @@ inputs:
     category: Project
     title: Extra Gradle options
     summary: Space-separated options appended to the graph dump invocation, for example `--offline`.
+- gradle_test_task: test
+  opts:
+    category: Project
+    title: Android unit test task
+    summary: Task name used for Android modules in `gradle-tasks.txt`, for example `testDebugUnitTest`.
+    description: |-
+      Task name appended to each selected Android module's path in `gradle-tasks.txt`. The default
+      `test` lifecycle task exists on every module and runs every unit test variant; a variant task such
+      as `testDebugUnitTest` is faster but only exists on modules that have that variant. Plain JVM
+      modules always get `test`.
 - flutter_project_dir: ""
   opts:
     category: Project
@@ -202,6 +212,10 @@ outputs:
   opts:
     title: Gradle modules file
     summary: Newline-separated Gradle project paths whose tests are selected. Not set in full mode.
+- BITRISE_TEST_SELECTION_GRADLE_TASKS_PATH:
+  opts:
+    title: Gradle tasks file
+    summary: 'Newline-separated Gradle unit test tasks to run, for example `:core:test`, ready for `./gradlew $(cat file)`. Not set in full mode.'
 - BITRISE_TEST_SELECTION_FLUTTER_PACKAGES_PATH:
   opts:
     title: Flutter packages file

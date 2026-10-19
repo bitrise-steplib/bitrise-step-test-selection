@@ -84,6 +84,7 @@ func run() int {
 		"BITRISE_TEST_SELECTION_SHADOW":                fmt.Sprint(res.Shadow),
 		"BITRISE_TEST_SELECTION_XCODE_ONLY_TESTING_PATH": files.XcodeOnlyTesting,
 		"BITRISE_TEST_SELECTION_GRADLE_MODULES_PATH":   files.GradleModules,
+		"BITRISE_TEST_SELECTION_GRADLE_TASKS_PATH":     files.GradleTasks,
 		"BITRISE_TEST_SELECTION_FLUTTER_PACKAGES_PATH": files.FlutterPackages,
 		"BITRISE_TEST_SELECTION_SUMMARY":               fmt.Sprintf("%s: %d of %d test units selected", res.Mode, res.Stats.Selected, res.Stats.Candidates),
 	}

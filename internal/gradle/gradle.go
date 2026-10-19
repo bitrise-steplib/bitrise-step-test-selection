@@ -120,6 +120,10 @@ type Options struct {
 	Gradlew string
 	// ExtraArgs are appended to the Gradle invocation.
 	ExtraArgs []string
+	// AndroidUnitTestTask is the unit test task name for Android modules; the plain
+	// `test` lifecycle task exists on every module, variant-specific ones only when the
+	// variant does. Defaults to "test".
+	AndroidUnitTestTask string
 }
 
 // Build runs the init script and converts the dump into a graph.
@@ -169,12 +173,20 @@ func Build(opts Options, run Runner) (*graph.Graph, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gradle graph dump produced no output: %w", err)
 	}
-	return BuildFromDump(root, projectDir, data)
+	return BuildFromDumpWithTask(root, projectDir, data, opts.AndroidUnitTestTask)
 }
 
 // BuildFromDump converts the init script's JSON into a graph. projectDir is the
 // absolute Gradle root; dump paths are relative to it.
 func BuildFromDump(root, projectDir string, data []byte) (*graph.Graph, error) {
+	return BuildFromDumpWithTask(root, projectDir, data, "test")
+}
+
+// BuildFromDumpWithTask is BuildFromDump with the Android unit test task name.
+func BuildFromDumpWithTask(root, projectDir string, data []byte, androidUnitTestTask string) (*graph.Graph, error) {
+	if androidUnitTestTask == "" {
+		androidUnitTestTask = "test"
+	}
 	var dump Dump
 	if err := json.Unmarshal(data, &dump); err != nil {
 		return nil, fmt.Errorf("parse gradle graph dump: %w", err)
@@ -240,7 +252,7 @@ func BuildFromDump(root, projectDir string, data []byte) (*graph.Graph, error) {
 			id := moduleID + ":unitTest"
 			task := p.Path + ":test"
 			if p.Android {
-				task = ""
+				task = p.Path + ":" + androidUnitTestTask
 			}
 			g.Add(&graph.Node{ID: id, Name: p.Path + " unit tests", Kind: graph.KindTest, Ecosystem: "gradle", Dirs: unitDirs, Deps: []string{moduleID}, Meta: map[string]string{"module": p.Path, "task": task, "kind": "unit"}})
 		}
