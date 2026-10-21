@@ -188,6 +188,17 @@ func RunShadow(opts ShadowOptions) (rep Report, ok bool) {
 		cfg.RepoDir = root
 	}
 	cfg.RepoDir = canonical(cfg.RepoDir)
+	// The analysers take project directories relative to the repository root, while a
+	// test step usually knows its project as an absolute path.
+	for _, dir := range []*string{&cfg.GradleProjectDir, &cfg.FlutterProjectDir} {
+		if filepath.IsAbs(*dir) {
+			rel, inRepo := RelPath(cfg.RepoDir, *dir)
+			if !inRepo {
+				return finish(DecisionError, ReasonNoProject, "the project directory is outside the repository")
+			}
+			*dir = rel
+		}
+	}
 
 	type outcome struct {
 		res      Result

@@ -157,6 +157,26 @@ func TestRunShadowKeep(t *testing.T) {
 	}
 }
 
+func TestRunShadowAbsoluteProjectDir(t *testing.T) {
+	root := flutterRepo(t)
+	rep, _ := RunShadow(ShadowOptions{
+		Config:  Config{ProjectType: "flutter", FlutterProjectDir: filepath.Join(root, "packages")},
+		WorkDir: root,
+		Getenv:  env(map[string]string{ConfigEnvKey: shadowJSON}),
+	})
+	if rep.Decision != "selected" || !reflect.DeepEqual(rep.Selected, []string{"ui tests"}) {
+		t.Fatalf("%+v", rep)
+	}
+	rep, _ = RunShadow(ShadowOptions{
+		Config:  Config{ProjectType: "flutter", FlutterProjectDir: t.TempDir()},
+		WorkDir: root,
+		Getenv:  env(map[string]string{ConfigEnvKey: shadowJSON}),
+	})
+	if rep.ReasonKind != ReasonNoProject {
+		t.Fatalf("%+v", rep)
+	}
+}
+
 func TestRunShadowBaseFromEnv(t *testing.T) {
 	root := flutterRepo(t)
 	rep, _ := RunShadow(ShadowOptions{
