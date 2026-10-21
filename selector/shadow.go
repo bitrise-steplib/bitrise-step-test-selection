@@ -43,10 +43,21 @@ const (
 // BackendConfig is the part of BITRISE_TEST_SELECTION_CONFIG_JSON the test steps read.
 // The whole JSON is also handed to Run, so its rule lists and force_full_run apply.
 type BackendConfig struct {
-	Mode           string   `json:"mode"`
-	BaseRef        string   `json:"base_ref"`
-	SampleRate     *float64 `json:"sample_rate"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
+	Mode       string   `json:"mode"`
+	BaseRef    string   `json:"base_ref"`
+	SampleRate *float64 `json:"sample_rate"`
+	// SampleRates overrides SampleRate per consuming step, keyed by ShadowOptions.Step,
+	// because the Gradle analysis costs far more than the Xcode or Flutter one.
+	SampleRates    map[string]float64 `json:"sample_rates"`
+	TimeoutSeconds int                `json:"timeout_seconds"`
+}
+
+// SampleRateFor returns the sample rate that applies to step.
+func (c BackendConfig) SampleRateFor(step string) *float64 {
+	if rate, ok := c.SampleRates[step]; ok {
+		return &rate
+	}
+	return c.SampleRate
 }
 
 // ShadowConfig returns the backend configuration when it asks for a shadow run.
@@ -134,7 +145,7 @@ func RunShadow(opts ShadowOptions) (rep Report, ok bool) {
 	if !enabled {
 		return Report{}, false
 	}
-	if !Sampled(bc.SampleRate, getenv("BITRISE_BUILD_SLUG")) {
+	if !Sampled(bc.SampleRateFor(opts.Step), getenv("BITRISE_BUILD_SLUG")) {
 		debugf("Test selection shadow run: this build is not in the sample")
 		return Report{}, false
 	}

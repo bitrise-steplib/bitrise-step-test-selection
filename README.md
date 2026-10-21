@@ -90,6 +90,7 @@ The backend configuration accepts the step's `config` fields plus:
 | `mode` | Only `shadow` enables the runner. |
 | `base_ref` | Commit or branch to diff against. Falls back to `BITRISE_TEST_SELECTION_BASE_REF`, then to the PR target branch. |
 | `sample_rate` | Fraction of builds that run the analysis, decided from the build slug. Defaults to every build. |
+| `sample_rates` | Per-step override of `sample_rate`, keyed by step (`xcode-test`, `xcode-test-without-building`, `android-unit-test`, `flutter-test`). |
 | `timeout_seconds` | Analysis time limit, 60 by default. Git and Gradle are killed when it passes. |
 
 The runner never panics or fails the step. A timeout, a panic or an analysis error becomes a

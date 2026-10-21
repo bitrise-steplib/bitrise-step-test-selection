@@ -101,6 +101,20 @@ func TestRunShadowDisabled(t *testing.T) {
 	}
 }
 
+func TestSampleRateFor(t *testing.T) {
+	bc, _ := ShadowConfig(env(map[string]string{ConfigEnvKey: `{"mode":"shadow","sample_rate":0.5,"sample_rates":{"android-unit-test":0}}`}))
+	if r := bc.SampleRateFor("android-unit-test"); r == nil || *r != 0 {
+		t.Errorf("android: %v", r)
+	}
+	if r := bc.SampleRateFor("xcode-test"); r == nil || *r != 0.5 {
+		t.Errorf("xcode: %v", r)
+	}
+	_, ok := RunShadow(ShadowOptions{Step: "android-unit-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","sample_rates":{"android-unit-test":0}}`})})
+	if ok {
+		t.Error("android ran at a zero sample rate")
+	}
+}
+
 func TestRunShadowNoBase(t *testing.T) {
 	rep, ok := RunShadow(ShadowOptions{Step: "flutter-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow"}`})})
 	if !ok || rep.Decision != "full" || rep.ReasonKind != ReasonNoBase {
