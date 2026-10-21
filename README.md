@@ -64,13 +64,15 @@ means "everything" to the consuming steps.
 ## Using it from a test step (shadow mode)
 
 The `selector` package is the importable form of this step. A test step calls
-`selector.RunShadow` before its test run: when the backend injects
+`selector.StartShadow` before its test run: when the backend injects
 `BITRISE_TEST_SELECTION_CONFIG_JSON` with `"mode": "shadow"`, it computes the selection the
-step would have made, logs one summary line and returns a report. The step still runs every
-test, and writes the report with `selector.WriteReport` into `$BITRISE_TEST_RESULT_DIR`.
+step would have made and logs one summary line. The step still runs every test. Afterwards
+it reports what each test unit did with `Finish`, which works out the time a selection
+would have saved and whether it would have skipped a failing unit, and publishes both on
+the step analytics channel.
 
 ```go
-rep, ok := selector.RunShadow(selector.ShadowOptions{
+sh, ok := selector.StartShadow(selector.ShadowOptions{
 	Step:    "xcode-test",
 	Config:  selector.Config{ProjectType: "xcode", ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme},
 	WorkDir: filepath.Dir(cfg.ProjectPath),
@@ -78,10 +80,16 @@ rep, ok := selector.RunShadow(selector.ShadowOptions{
 	Logf:    logger.Printf,
 	Debugf:  logger.Debugf,
 })
+started := time.Now()
+runTests()
 if ok {
-	_, _ = selector.WriteReport(os.Getenv("BITRISE_TEST_RESULT_DIR"), rep)
+	sh.Finish(outcomesPerTarget(), time.Since(started)) // nil outcomes: results unreadable
 }
 ```
+
+`selector.UnitKey` names a unit the way `UnitOutcome.Key` must: the Xcode test target, the
+Gradle project path (`:feature:home`) or the Flutter package directory.
+`selector.JUnitOutcome` builds an outcome from JUnit XML files.
 
 The backend configuration accepts the step's `config` fields plus:
 
@@ -89,30 +97,38 @@ The backend configuration accepts the step's `config` fields plus:
 |---|---|
 | `mode` | Only `shadow` enables the runner. |
 | `base_ref` | Commit or branch to diff against. Falls back to `BITRISE_TEST_SELECTION_BASE_REF`, then to the PR target branch. |
+| `base_build_slug` | The build `base_ref` was taken from, passed through to the events so a failure can be checked against it. |
 | `sample_rate` | Fraction of builds that run the analysis, decided from the build slug. Defaults to every build. |
 | `sample_rates` | Per-step override of `sample_rate`, keyed by step (`xcode-test`, `xcode-test-without-building`, `android-unit-test`, `flutter-test`). |
 | `timeout_seconds` | Analysis time limit, 60 by default. Git and Gradle are killed when it passes. |
 
-The runner never panics or fails the step. A timeout, a panic or an analysis error becomes a
-report with `"decision": "error"` and a `reason_kind` (`timeout`, `panic`, `failed`, `no_project`).
+The runner never panics or fails the step. A timeout, a panic or an analysis error becomes
+`"decision": "error"` with a `reason_kind` (`timeout`, `panic`, `failed`, `no_project`).
 Without a base it reports `"decision": "full"` with `reason_kind: "no_base"` and analyses nothing.
 
-`test-selection.json` in the step's test result directory names test units, never files:
+### Events
 
-```json
-{
-  "version": 1,
-  "step": "xcode-test",
-  "decision": "selected",
-  "reason_kind": "graph",
-  "base": "4ae226e2759122ddc4212f8768378fb742cae9e9",
-  "changed_files": 1,
-  "duration_ms": 412,
-  "candidates": 4,
-  "selected": ["FeatureTests", "FixtureAppTests", "NetworkingTests"],
-  "skipped": ["CoreTests"]
-}
-```
+Both events carry `step_id`, `build_slug`, `app_slug`, `workspace_id`, `decision`,
+`reason_kind`, `base` and `base_build_slug`. They name test units, never files.
+
+- **`test_selection_shadow`**, once per step run: `selected` and `skipped` (comma-separated),
+  `units` (JSON: name, selected, mapped, ran, tests, failed, flaky, duration_ms), `duration_ms`
+  of the analysis, `test_run_ms`, `estimated_saving_ms`, `missed_failure`, `missed_units`,
+  `flaky_in_skipped`, `outcomes_known`.
+- **`test_selection_missed_failure`**, once per unit that the selection would have skipped
+  although a test in it failed in its final attempt: `unit`, `mapped`, `tests`, `failed`, `flaky`.
+
+The rules behind the numbers, only for `"decision": "selected"`:
+
+- **Saving:** the summed duration of the units that ran but would have been skipped. When no
+  selected unit ran, the step itself would have been skipped, so the saving is the whole
+  test run's wall time.
+- **Missed failure:** a skipped unit with a test whose final attempt failed. A test that only
+  failed before passing on a retry counts as flaky, not missed.
+- **Unmapped units:** a unit that ran but the analysis did not know (`"mapped": false`) counts as
+  skipped, because a selection would not have run it either.
+
+Set `ANALYTICS_DISABLED=true` to send nothing. The report is also printed at debug level.
 
 ## Trying it on a repository
 

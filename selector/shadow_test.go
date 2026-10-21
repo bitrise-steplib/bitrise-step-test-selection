@@ -1,14 +1,16 @@
 package selector
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/bitrise-io/go-utils/v2/analytics"
 )
 
 func env(values map[string]string) func(string) string {
@@ -92,11 +94,11 @@ func TestSampled(t *testing.T) {
 }
 
 func TestRunShadowDisabled(t *testing.T) {
-	if _, ok := RunShadow(ShadowOptions{Getenv: env(nil)}); ok {
+	if _, ok := StartShadow(ShadowOptions{Getenv: env(nil)}); ok {
 		t.Fatal("ran without configuration")
 	}
 	zero := `{"mode":"shadow","sample_rate":0}`
-	if _, ok := RunShadow(ShadowOptions{Getenv: env(map[string]string{ConfigEnvKey: zero})}); ok {
+	if _, ok := StartShadow(ShadowOptions{Getenv: env(map[string]string{ConfigEnvKey: zero})}); ok {
 		t.Fatal("ran outside the sample")
 	}
 }
@@ -109,24 +111,25 @@ func TestSampleRateFor(t *testing.T) {
 	if r := bc.SampleRateFor("xcode-test"); r == nil || *r != 0.5 {
 		t.Errorf("xcode: %v", r)
 	}
-	_, ok := RunShadow(ShadowOptions{Step: "android-unit-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","sample_rates":{"android-unit-test":0}}`})})
+	_, ok := StartShadow(ShadowOptions{Step: "android-unit-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","sample_rates":{"android-unit-test":0}}`})})
 	if ok {
 		t.Error("android ran at a zero sample rate")
 	}
 }
 
 func TestRunShadowNoBase(t *testing.T) {
-	rep, ok := RunShadow(ShadowOptions{Step: "flutter-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow"}`})})
-	if !ok || rep.Decision != "full" || rep.ReasonKind != ReasonNoBase {
-		t.Fatalf("%+v", rep)
+	sh, ok := StartShadow(ShadowOptions{Step: "flutter-test", Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow"}`})})
+	if !ok || sh.Report.Decision != "full" || sh.Report.ReasonKind != ReasonNoBase {
+		t.Fatalf("%+v", sh.Report)
 	}
 }
 
 func TestRunShadowNoXcodeProject(t *testing.T) {
-	rep, ok := RunShadow(ShadowOptions{
+	sh, ok := StartShadow(ShadowOptions{
 		Config: Config{ProjectType: "xcode"},
 		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
 	})
+	rep := sh.Report
 	if !ok || rep.Decision != DecisionError || rep.ReasonKind != ReasonNoProject {
 		t.Fatalf("%+v", rep)
 	}
@@ -135,13 +138,14 @@ func TestRunShadowNoXcodeProject(t *testing.T) {
 func TestRunShadowSelects(t *testing.T) {
 	root := flutterRepo(t)
 	var logged []string
-	rep, ok := RunShadow(ShadowOptions{
+	sh, ok := StartShadow(ShadowOptions{
 		Step:    "flutter-test",
 		Config:  Config{ProjectType: "flutter"},
 		WorkDir: filepath.Join(root, "packages", "ui"),
 		Getenv:  env(map[string]string{ConfigEnvKey: shadowJSON}),
 		Logf:    func(f string, v ...interface{}) { logged = append(logged, fmt.Sprintf(f, v...)) },
 	})
+	rep := sh.Report
 	if !ok {
 		t.Fatal("not run")
 	}
@@ -158,7 +162,7 @@ func TestRunShadowSelects(t *testing.T) {
 
 func TestRunShadowKeep(t *testing.T) {
 	root := flutterRepo(t)
-	rep, _ := RunShadow(ShadowOptions{
+	sh, _ := StartShadow(ShadowOptions{
 		Config: Config{ProjectType: "flutter", RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
 		Keep: func(t Test, repoDir string) bool {
@@ -166,6 +170,7 @@ func TestRunShadowKeep(t *testing.T) {
 			return ok && t.Ident.PackageDir == rel
 		},
 	})
+	rep := sh.Report
 	if rep.Candidates != 1 || len(rep.Selected) != 0 || !reflect.DeepEqual(rep.Skipped, []string{"core tests"}) {
 		t.Fatalf("%+v", rep)
 	}
@@ -173,19 +178,21 @@ func TestRunShadowKeep(t *testing.T) {
 
 func TestRunShadowAbsoluteProjectDir(t *testing.T) {
 	root := flutterRepo(t)
-	rep, _ := RunShadow(ShadowOptions{
+	sh, _ := StartShadow(ShadowOptions{
 		Config:  Config{ProjectType: "flutter", FlutterProjectDir: filepath.Join(root, "packages")},
 		WorkDir: root,
 		Getenv:  env(map[string]string{ConfigEnvKey: shadowJSON}),
 	})
+	rep := sh.Report
 	if rep.Decision != "selected" || !reflect.DeepEqual(rep.Selected, []string{"ui tests"}) {
 		t.Fatalf("%+v", rep)
 	}
-	rep, _ = RunShadow(ShadowOptions{
+	sh, _ = StartShadow(ShadowOptions{
 		Config:  Config{ProjectType: "flutter", FlutterProjectDir: t.TempDir()},
 		WorkDir: root,
 		Getenv:  env(map[string]string{ConfigEnvKey: shadowJSON}),
 	})
+	rep = sh.Report
 	if rep.ReasonKind != ReasonNoProject {
 		t.Fatalf("%+v", rep)
 	}
@@ -193,10 +200,11 @@ func TestRunShadowAbsoluteProjectDir(t *testing.T) {
 
 func TestRunShadowBaseFromEnv(t *testing.T) {
 	root := flutterRepo(t)
-	rep, _ := RunShadow(ShadowOptions{
+	sh, _ := StartShadow(ShadowOptions{
 		Config: Config{ProjectType: "flutter", RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow"}`, "BITRISEIO_GIT_BRANCH_DEST": "main"}),
 	})
+	rep := sh.Report
 	if rep.Decision != "selected" || len(rep.Selected) != 2 {
 		t.Fatalf("%+v", rep)
 	}
@@ -204,10 +212,11 @@ func TestRunShadowBaseFromEnv(t *testing.T) {
 
 func TestRunShadowForcedFullRun(t *testing.T) {
 	root := flutterRepo(t)
-	rep, _ := RunShadow(ShadowOptions{
+	sh, _ := StartShadow(ShadowOptions{
 		Config: Config{ProjectType: "flutter", RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","force_full_run":true}`}),
 	})
+	rep := sh.Report
 	if rep.Decision != "full" || rep.ReasonKind != "forced" || len(rep.Selected) != 3 {
 		t.Fatalf("%+v", rep)
 	}
@@ -219,38 +228,158 @@ func TestRunShadowTimeoutAndPanic(t *testing.T) {
 
 	run = func(Config, Deps) (Result, error) { time.Sleep(3 * time.Second); return Result{}, nil }
 	start := time.Now()
-	rep, _ := RunShadow(ShadowOptions{
+	sh, _ := StartShadow(ShadowOptions{
 		Config: Config{RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","timeout_seconds":1}`}),
 	})
+	rep := sh.Report
 	if rep.Decision != DecisionError || rep.ReasonKind != ReasonTimeout || time.Since(start) > 2*time.Second {
 		t.Fatalf("timeout: %+v after %s", rep, time.Since(start))
 	}
 
 	run = func(Config, Deps) (Result, error) { panic("boom") }
-	rep, _ = RunShadow(ShadowOptions{
+	sh, _ = StartShadow(ShadowOptions{
 		Config: Config{RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
 	})
+	rep = sh.Report
 	if rep.Decision != DecisionError || rep.ReasonKind != ReasonPanic {
 		t.Fatalf("panic: %+v", rep)
 	}
 }
 
-func TestWriteReport(t *testing.T) {
-	if p, err := WriteReport("", Report{}); p != "" || err != nil {
-		t.Fatalf("%q %v", p, err)
+type fakeTracker struct {
+	events []string
+	props  []map[string]interface{}
+}
+
+func (f *fakeTracker) Enqueue(name string, properties ...analytics.Properties) {
+	f.events = append(f.events, name)
+	merged := map[string]interface{}{}
+	for _, p := range properties {
+		for k, v := range p {
+			merged[k] = v
+		}
 	}
-	dir := filepath.Join(t.TempDir(), "step")
-	in := Report{Version: 1, Step: "xcode-test", Decision: "selected", ReasonKind: "graph", Selected: []string{"A"}, Skipped: []string{}}
-	p, err := WriteReport(dir, in)
+	f.props = append(f.props, merged)
+}
+func (f *fakeTracker) Wait()            {}
+func (f *fakeTracker) IsTracking() bool { return true }
+
+func selectedShadow(t *testing.T) *Shadow {
+	t.Helper()
+	root := flutterRepo(t)
+	sh, ok := StartShadow(ShadowOptions{
+		Step:   "flutter-test",
+		Config: Config{ProjectType: "flutter", RepoDir: root},
+		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","base_build_slug":"green-build"}`, "BITRISE_BUILD_SLUG": "b1", "BITRISE_APP_SLUG": "a1", "BITRISE_WORKSPACE_ID": "w1"}),
+	})
+	if !ok || sh.Report.Decision != "selected" {
+		t.Fatalf("%+v", sh.Report)
+	}
+	return sh
+}
+
+func TestFinishSavingAndMissedFailure(t *testing.T) {
+	fake := &fakeTracker{}
+	defer func(orig func(func(string) string) analytics.Tracker) { newTracker = orig }(newTracker)
+	newTracker = func(func(string) string) analytics.Tracker { return fake }
+
+	sh := selectedShadow(t)
+	sh.Finish([]UnitOutcome{
+		{Key: ".", Tests: 3, Duration: 2 * time.Second},
+		{Key: "packages/ui", Tests: 2, Duration: time.Second},
+		{Key: "packages/core", Tests: 4, Failed: 1, Flaky: 1, Duration: 5 * time.Second},
+		{Key: "packages/unknown", Tests: 1, Duration: 500 * time.Millisecond},
+	}, 30*time.Second)
+
+	rep := sh.Report
+	if rep.EstimatedSavingMS != 5500 || !rep.MissedFailure || !reflect.DeepEqual(rep.MissedUnits, []string{"core tests"}) || rep.FlakyInSkipped != 1 {
+		t.Fatalf("%+v", rep)
+	}
+	if !rep.OutcomesKnown || rep.TestRunMS != 30000 || rep.BaseBuildSlug != "green-build" {
+		t.Errorf("%+v", rep)
+	}
+	var unknown *UnitReport
+	for i := range rep.Units {
+		if rep.Units[i].Name == "packages/unknown" {
+			unknown = &rep.Units[i]
+		}
+	}
+	if unknown == nil || unknown.Mapped || unknown.Selected || !unknown.Ran {
+		t.Errorf("an unmapped unit that ran: %+v", unknown)
+	}
+
+	if !reflect.DeepEqual(fake.events, []string{ShadowEvent, MissedFailureEvent}) {
+		t.Fatalf("events %v", fake.events)
+	}
+	shadow, missed := fake.props[0], fake.props[1]
+	if shadow["estimated_saving_ms"] != int64(5500) || shadow["missed_failure"] != true || shadow["workspace_id"] != "w1" || shadow["build_slug"] != "b1" {
+		t.Errorf("shadow event %v", shadow)
+	}
+	if missed["unit"] != "core tests" || missed["failed"] != 1 || missed["base_build_slug"] != "green-build" {
+		t.Errorf("missed failure event %v", missed)
+	}
+	if units, _ := shadow["units"].(string); !strings.Contains(units, `"name":"core tests"`) || strings.Contains(units, "key") {
+		t.Errorf("units %s", units)
+	}
+}
+
+func TestFinishEmptySelectionSavesTheWholeRun(t *testing.T) {
+	newTracker = func(func(string) string) analytics.Tracker { return nil }
+	defer func() { newTracker = defaultNewTracker }()
+
+	sh := selectedShadow(t)
+	sh.Finish([]UnitOutcome{{Key: "packages/core", Tests: 4, Duration: 3 * time.Second}}, 40*time.Second)
+	if sh.Report.EstimatedSavingMS != 40000 || sh.Report.MissedFailure {
+		t.Fatalf("%+v", sh.Report)
+	}
+}
+
+func TestFinishWithoutOutcomesOrSelection(t *testing.T) {
+	newTracker = func(func(string) string) analytics.Tracker { return nil }
+	defer func() { newTracker = defaultNewTracker }()
+
+	sh := selectedShadow(t)
+	sh.Finish(nil, 10*time.Second)
+	if sh.Report.OutcomesKnown || sh.Report.EstimatedSavingMS != 0 || sh.Report.MissedFailure {
+		t.Fatalf("unknown outcomes: %+v", sh.Report)
+	}
+
+	root := flutterRepo(t)
+	full, _ := StartShadow(ShadowOptions{
+		Config: Config{ProjectType: "flutter", RepoDir: root},
+		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","force_full_run":true}`}),
+	})
+	full.Finish([]UnitOutcome{{Key: "packages/core", Tests: 1, Failed: 1, Duration: time.Second}}, time.Second)
+	if full.Report.EstimatedSavingMS != 0 || full.Report.MissedFailure {
+		t.Fatalf("a full run neither saves nor misses: %+v", full.Report)
+	}
+
+	var nilShadow *Shadow
+	nilShadow.Finish(nil, 0)
+}
+
+func TestJUnitOutcome(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "a.xml", `<?xml version="1.0"?>
+<testsuite name="A" tests="4">
+  <testcase name="ok" time="0.5"/>
+  <testcase name="bad" time="1.25"><failure message="x"/></testcase>
+  <testcase name="crash" time="0.25"><error/></testcase>
+  <testcase name="off"><skipped/></testcase>
+</testsuite>`)
+	write(t, dir, "b.xml", `<testsuites><testsuite><testcase name="retried" time="1"><flakyFailure/></testcase></testsuite></testsuites>`)
+	got, err := JUnitOutcome(":core", []string{filepath.Join(dir, "a.xml"), filepath.Join(dir, "b.xml")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(p)
-	var out Report
-	if err := json.Unmarshal(data, &out); err != nil || !reflect.DeepEqual(in, out) {
-		t.Fatalf("%v %+v", err, out)
+	want := UnitOutcome{Key: ":core", Tests: 4, Failed: 2, Flaky: 1, Duration: 3 * time.Second}
+	if got != want {
+		t.Fatalf("got %+v want %+v", got, want)
+	}
+	if _, err := JUnitOutcome("x", []string{filepath.Join(dir, "missing.xml")}); err == nil {
+		t.Error("a missing file must fail")
 	}
 }
 
