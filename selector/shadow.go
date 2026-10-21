@@ -413,10 +413,16 @@ func defaultNewTracker(getenv func(string) string) analytics.Tracker {
 	if getenv("ANALYTICS_DISABLED") == "true" {
 		return nil
 	}
+	logger := log.NewLogger()
+	logger.EnableDebugLog(getenv(VerboseEnvKey) == "true")
 	// The default client waits 30 s for a slow endpoint; a shadow run must not hold up
 	// the customer's build that long.
-	return analytics.NewTracker(analytics.NewDefaultClient(log.NewLogger(), publishTimeout), publishTimeout)
+	return analytics.NewTracker(analytics.NewDefaultClient(logger, publishTimeout), publishTimeout)
 }
+
+// VerboseEnvKey prints the published report and the analytics client's delivery errors,
+// which are otherwise only debug logs, so that a test app can verify the pipeline.
+const VerboseEnvKey = "BITRISE_TEST_SELECTION_SHADOW_VERBOSE"
 
 const publishTimeout = 5 * time.Second
 
@@ -451,7 +457,11 @@ func (s *Shadow) publish() {
 		"flaky_in_skipped":    rep.FlakyInSkipped,
 	})
 	if data, err := json.Marshal(rep); err == nil {
-		s.debugf("Test selection shadow report: %s", data)
+		if s.getenv(VerboseEnvKey) == "true" {
+			s.logf("Test selection shadow report: %s", data)
+		} else {
+			s.debugf("Test selection shadow report: %s", data)
+		}
 	}
 
 	tracker := newTracker(s.getenv)
