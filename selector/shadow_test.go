@@ -138,7 +138,8 @@ func TestRunShadowKeep(t *testing.T) {
 		Config: Config{ProjectType: "flutter", RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
 		Keep: func(t Test, repoDir string) bool {
-			return repoDir == root && t.Ident.PackageDir == "packages/core"
+			rel, ok := RelPath(repoDir, filepath.Join(root, "packages", "core"))
+			return ok && t.Ident.PackageDir == rel
 		},
 	})
 	if rep.Candidates != 1 || len(rep.Selected) != 0 || !reflect.DeepEqual(rep.Skipped, []string{"core tests"}) {
@@ -206,5 +207,30 @@ func TestWriteReport(t *testing.T) {
 	var out Report
 	if err := json.Unmarshal(data, &out); err != nil || !reflect.DeepEqual(in, out) {
 		t.Fatalf("%v %+v", err, out)
+	}
+}
+
+func TestRelPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		repo, path, want string
+		ok               bool
+	}{
+		{root, root, ".", true},
+		{root, filepath.Join(root, "a", "b"), "a/b", true},
+		{link, filepath.Join(root, "a"), "a", true},
+		{filepath.Join(root, "a"), root, "", false},
+	} {
+		got, ok := RelPath(c.repo, c.path)
+		if got != c.want || ok != c.ok {
+			t.Errorf("RelPath(%s, %s) = %q %v, want %q %v", c.repo, c.path, got, ok, c.want, c.ok)
+		}
 	}
 }

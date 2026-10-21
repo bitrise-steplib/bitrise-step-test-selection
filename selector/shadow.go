@@ -184,6 +184,7 @@ func RunShadow(opts ShadowOptions) (rep Report, ok bool) {
 		}
 		cfg.RepoDir = root
 	}
+	cfg.RepoDir = canonical(cfg.RepoDir)
 
 	type outcome struct {
 		res      Result
@@ -273,6 +274,27 @@ func runCommand(ctx context.Context, dir, name string, args ...string) (string, 
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
+}
+
+// RelPath returns path relative to repoDir in slash form, resolving symlinks on both
+// sides (git reports /private/var where the step sees /var on macOS). ok is false when
+// path is outside repoDir.
+func RelPath(repoDir, path string) (string, bool) {
+	rel, err := filepath.Rel(canonical(repoDir), canonical(path))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
+func canonical(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		p = resolved
+	}
+	return p
 }
 
 func firstNonEmpty(values ...string) string {
