@@ -133,6 +133,9 @@ The rules behind the numbers, only for `"decision": "selected"`:
 - **Unmapped units:** a unit that ran but the analysis did not know (`"mapped": false`) counts as
   skipped, because a selection would not have run it either.
 
+[`docs/shadow-dashboard.sql`](docs/shadow-dashboard.sql) has the dashboard queries: saving per
+workspace and week, saving per step, the missed failures, and the miss rate.
+
 Set `ANALYTICS_DISABLED=true` to send nothing. The report is printed at debug level, or in
 the normal log together with the analytics client's delivery errors when
 `BITRISE_TEST_SELECTION_SHADOW_VERBOSE=true`.
