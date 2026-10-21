@@ -113,16 +113,21 @@ Both events carry `step_id`, `build_slug`, `app_slug`, `workspace_id`, `decision
 
 - **`test_selection_shadow`**, once per step run: `selected` and `skipped` (comma-separated),
   `units` (JSON: name, selected, mapped, ran, tests, failed, flaky, duration_ms), `duration_ms`
-  of the analysis, `test_run_ms`, `estimated_saving_ms`, `missed_failure`, `missed_units`,
+  of the analysis, `test_run_ms`, `estimated_saving_ms`, `estimated_saving_by_units_ms`,
+  `missed_failure`, `missed_units`,
   `flaky_in_skipped`, `outcomes_known`.
 - **`test_selection_missed_failure`**, once per unit that the selection would have skipped
   although a test in it failed in its final attempt: `unit`, `mapped`, `tests`, `failed`, `flaky`.
 
 The rules behind the numbers, only for `"decision": "selected"`:
 
-- **Saving:** the summed duration of the units that ran but would have been skipped. When no
-  selected unit ran, the step itself would have been skipped, so the saving is the whole
-  test run's wall time.
+- **Saving**, two estimates, because a unit's cost is more than its test cases:
+  - `estimated_saving_ms`, a lower bound: the test case time of the units that ran but would
+    have been skipped. It leaves out compiling a module's tests or launching a test host.
+  - `estimated_saving_by_units_ms`: the test run's wall time split evenly across the units that
+    ran, times the skipped ones.
+  When no selected unit ran, the step itself would have been skipped, so both are the whole
+  test run's wall time. The Flutter step tests one package, so its two numbers are always equal.
 - **Missed failure:** a skipped unit with a test whose final attempt failed. A test that only
   failed before passing on a retry counts as flaky, not missed.
 - **Unmapped units:** a unit that ran but the analysis did not know (`"mapped": false`) counts as

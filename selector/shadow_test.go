@@ -297,6 +297,9 @@ func TestFinishSavingAndMissedFailure(t *testing.T) {
 	if rep.EstimatedSavingMS != 5500 || !rep.MissedFailure || !reflect.DeepEqual(rep.MissedUnits, []string{"core tests"}) || rep.FlakyInSkipped != 1 {
 		t.Fatalf("%+v", rep)
 	}
+	if rep.EstimatedSavingByUnitsMS != 15000 {
+		t.Errorf("2 of the 4 units that ran would be skipped: %d", rep.EstimatedSavingByUnitsMS)
+	}
 	if !rep.OutcomesKnown || rep.TestRunMS != 30000 || rep.BaseBuildSlug != "green-build" {
 		t.Errorf("%+v", rep)
 	}
@@ -331,7 +334,7 @@ func TestFinishEmptySelectionSavesTheWholeRun(t *testing.T) {
 
 	sh := selectedShadow(t)
 	sh.Finish([]UnitOutcome{{Key: "packages/core", Tests: 4, Duration: 3 * time.Second}}, 40*time.Second)
-	if sh.Report.EstimatedSavingMS != 40000 || sh.Report.MissedFailure {
+	if sh.Report.EstimatedSavingMS != 40000 || sh.Report.EstimatedSavingByUnitsMS != 40000 || sh.Report.MissedFailure {
 		t.Fatalf("%+v", sh.Report)
 	}
 }

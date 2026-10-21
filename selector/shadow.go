@@ -109,9 +109,13 @@ type Report struct {
 	OutcomesKnown     bool         `json:"outcomes_known"`
 	TestRunMS         int64        `json:"test_run_ms"`
 	EstimatedSavingMS int64        `json:"estimated_saving_ms"`
-	MissedFailure     bool         `json:"missed_failure"`
-	MissedUnits       []string     `json:"missed_units"`
-	FlakyInSkipped    int          `json:"flaky_in_skipped"`
+	// EstimatedSavingByUnitsMS splits the test run's wall time evenly across the units
+	// that ran. EstimatedSavingMS only counts test case time, which leaves out each
+	// unit's compilation and test host launch; the real saving lies between the two.
+	EstimatedSavingByUnitsMS int64    `json:"estimated_saving_by_units_ms"`
+	MissedFailure            bool     `json:"missed_failure"`
+	MissedUnits              []string `json:"missed_units"`
+	FlakyInSkipped           int      `json:"flaky_in_skipped"`
 }
 
 // UnitReport is one test unit with the decision and what its tests did.
@@ -378,14 +382,17 @@ func (s *Shadow) complete(outcomes []UnitOutcome, testRun time.Duration) {
 		return
 	}
 	anySelectedRan := false
+	ran, skippedRan := 0, 0
 	for _, u := range rep.Units {
 		if !u.Ran {
 			continue
 		}
+		ran++
 		if u.Selected {
 			anySelectedRan = true
 			continue
 		}
+		skippedRan++
 		rep.EstimatedSavingMS += u.DurationMS
 		rep.FlakyInSkipped += u.Flaky
 		if u.Failed > 0 {
@@ -397,7 +404,10 @@ func (s *Shadow) complete(outcomes []UnitOutcome, testRun time.Duration) {
 	// Gradle configuration included, not just the test cases.
 	if !anySelectedRan {
 		rep.EstimatedSavingMS = rep.TestRunMS
+		rep.EstimatedSavingByUnitsMS = rep.TestRunMS
+		return
 	}
+	rep.EstimatedSavingByUnitsMS = rep.TestRunMS * int64(skippedRan) / int64(ran)
 }
 
 // Event names on the step analytics channel.
@@ -441,20 +451,21 @@ func (s *Shadow) publish() {
 	}
 	units, _ := json.Marshal(rep.Units)
 	shadow := common.Merge(analytics.Properties{
-		"changed_files":       rep.ChangedFiles,
-		"duration_ms":         rep.DurationMS,
-		"candidates":          rep.Candidates,
-		"selected_count":      len(rep.Selected),
-		"skipped_count":       len(rep.Skipped),
-		"selected":            strings.Join(rep.Selected, ","),
-		"skipped":             strings.Join(rep.Skipped, ","),
-		"units":               string(units),
-		"outcomes_known":      rep.OutcomesKnown,
-		"test_run_ms":         rep.TestRunMS,
-		"estimated_saving_ms": rep.EstimatedSavingMS,
-		"missed_failure":      rep.MissedFailure,
-		"missed_units":        strings.Join(rep.MissedUnits, ","),
-		"flaky_in_skipped":    rep.FlakyInSkipped,
+		"changed_files":                rep.ChangedFiles,
+		"duration_ms":                  rep.DurationMS,
+		"candidates":                   rep.Candidates,
+		"selected_count":               len(rep.Selected),
+		"skipped_count":                len(rep.Skipped),
+		"selected":                     strings.Join(rep.Selected, ","),
+		"skipped":                      strings.Join(rep.Skipped, ","),
+		"units":                        string(units),
+		"outcomes_known":               rep.OutcomesKnown,
+		"test_run_ms":                  rep.TestRunMS,
+		"estimated_saving_ms":          rep.EstimatedSavingMS,
+		"estimated_saving_by_units_ms": rep.EstimatedSavingByUnitsMS,
+		"missed_failure":               rep.MissedFailure,
+		"missed_units":                 strings.Join(rep.MissedUnits, ","),
+		"flaky_in_skipped":             rep.FlakyInSkipped,
 	})
 	if data, err := json.Marshal(rep); err == nil {
 		if s.getenv(VerboseEnvKey) == "true" {
