@@ -74,6 +74,7 @@ rep, ok := selector.RunShadow(selector.ShadowOptions{
 	Step:    "xcode-test",
 	Config:  selector.Config{ProjectType: "xcode", ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme},
 	WorkDir: filepath.Dir(cfg.ProjectPath),
+	Keep:    func(t selector.Test, repoDir string) bool { return runs(t.Name) },
 	Logf:    logger.Printf,
 	Debugf:  logger.Debugf,
 })

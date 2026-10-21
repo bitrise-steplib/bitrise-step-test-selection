@@ -101,8 +101,9 @@ type ShadowOptions struct {
 	Config Config
 	// WorkDir is used to find the repository root when Config.RepoDir is empty.
 	WorkDir string
-	// Keep limits the report to the test units the step runs. Nil keeps every unit.
-	Keep func(Test) bool
+	// Keep limits the report to the test units the step runs; repoDir is the absolute
+	// repository root the units' paths are relative to. Nil keeps every unit.
+	Keep func(t Test, repoDir string) bool
 	// Getenv defaults to os.Getenv.
 	Getenv func(string) string
 	// Logf prints the one-line summary; Debugf gets the analysis details.
@@ -219,7 +220,7 @@ func RunShadow(opts ShadowOptions) (rep Report, ok bool) {
 	rep.Base = res.ChangedFiles.Base
 	rep.ChangedFiles = res.ChangedFiles.Count
 	for _, t := range res.Tests {
-		if opts.Keep != nil && !opts.Keep(t) {
+		if opts.Keep != nil && !opts.Keep(t, cfg.RepoDir) {
 			continue
 		}
 		rep.Candidates++

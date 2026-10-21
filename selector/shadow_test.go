@@ -137,7 +137,9 @@ func TestRunShadowKeep(t *testing.T) {
 	rep, _ := RunShadow(ShadowOptions{
 		Config: Config{ProjectType: "flutter", RepoDir: root},
 		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
-		Keep:   func(t Test) bool { return t.Ident.PackageDir == "packages/core" },
+		Keep: func(t Test, repoDir string) bool {
+			return repoDir == root && t.Ident.PackageDir == "packages/core"
+		},
 	})
 	if rep.Candidates != 1 || len(rep.Selected) != 0 || !reflect.DeepEqual(rep.Skipped, []string{"core tests"}) {
 		t.Fatalf("%+v", rep)
