@@ -40,6 +40,7 @@ Any analysis error is a full run with the reason in the log and the JSON, never 
   "mode": "selected",
   "shadow": false,
   "reason": "3 changed files mapped onto the project graph",
+  "reason_kind": "graph",
   "changed_files": {"origin": "git", "complete": true, "base": "…", "count": 3, "files": ["…"]},
   "owners": [{"file": "Modules/Core/Sources/Cache.swift", "nodes": ["spm:Core/Core"]}],
   "affected_nodes": ["spm:Core/Core", "spm:Core/CoreTests", "xcode:App/App", "xcode:App/AppTests"],
@@ -56,6 +57,60 @@ Any analysis error is a full run with the reason in the log and the JSON, never 
 Next to it, in `selected` mode only: `xcode-only-testing.txt`, `gradle-modules.txt`, `gradle-tasks.txt`,
 `flutter-packages.txt`. In `full` mode no list file is written, because an empty list
 means "everything" to the consuming steps.
+
+`reason_kind` classifies the decision without file names: `graph`, `forced`, `no_changes`,
+`incomplete_changes`, `global_file`, `unknown_file` or `analysis_failed`.
+
+## Using it from a test step (shadow mode)
+
+The `selector` package is the importable form of this step. A test step calls
+`selector.RunShadow` before its test run: when the backend injects
+`BITRISE_TEST_SELECTION_CONFIG_JSON` with `"mode": "shadow"`, it computes the selection the
+step would have made, logs one summary line and returns a report. The step still runs every
+test, and writes the report with `selector.WriteReport` into `$BITRISE_TEST_RESULT_DIR`.
+
+```go
+rep, ok := selector.RunShadow(selector.ShadowOptions{
+	Step:    "xcode-test",
+	Config:  selector.Config{ProjectType: "xcode", ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme},
+	WorkDir: filepath.Dir(cfg.ProjectPath),
+	Logf:    logger.Printf,
+	Debugf:  logger.Debugf,
+})
+if ok {
+	_, _ = selector.WriteReport(os.Getenv("BITRISE_TEST_RESULT_DIR"), rep)
+}
+```
+
+The backend configuration accepts the step's `config` fields plus:
+
+| Field | Meaning |
+|---|---|
+| `mode` | Only `shadow` enables the runner. |
+| `base_ref` | Commit or branch to diff against. Falls back to `BITRISE_TEST_SELECTION_BASE_REF`, then to the PR target branch. |
+| `sample_rate` | Fraction of builds that run the analysis, decided from the build slug. Defaults to every build. |
+| `timeout_seconds` | Analysis time limit, 60 by default. Git and Gradle are killed when it passes. |
+
+The runner never panics or fails the step. A timeout, a panic or an analysis error becomes a
+report with `"decision": "error"` and a `reason_kind` (`timeout`, `panic`, `failed`, `no_project`).
+Without a base it reports `"decision": "full"` with `reason_kind: "no_base"` and analyses nothing.
+
+`test-selection.json` in the step's test result directory names test units, never files:
+
+```json
+{
+  "version": 1,
+  "step": "xcode-test",
+  "decision": "selected",
+  "reason_kind": "graph",
+  "base": "4ae226e2759122ddc4212f8768378fb742cae9e9",
+  "changed_files": 1,
+  "duration_ms": 412,
+  "candidates": 4,
+  "selected": ["FeatureTests", "FixtureAppTests", "NetworkingTests"],
+  "skipped": ["CoreTests"]
+}
+```
 
 ## Trying it on a repository
 

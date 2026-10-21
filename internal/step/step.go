@@ -82,10 +82,11 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 	}
 
 	res := selection.Result{Version: selection.Version, Mode: selection.ModeSelected}
-	fullRun := func(reason string) {
+	fullRun := func(kind selection.ReasonKind, reason string) {
 		if res.Mode != selection.ModeFull {
 			res.Mode = selection.ModeFull
 			res.Reason = reason
+			res.ReasonKind = kind
 		}
 	}
 	warn := func(format string, v ...interface{}) {
@@ -124,16 +125,16 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		if reason == "" {
 			reason = "full run forced by the build configuration"
 		}
-		fullRun(reason)
+		fullRun(selection.ReasonForced, reason)
 	}
 
 	// 1. Changed files.
 	changed := resolveChanges(cfg, baseRef, root, deps, warn)
 	res.ChangedFiles = selection.ChangedFiles{Origin: changed.Origin, Complete: changed.Complete, Base: changed.Base, Files: changed.Files}
 	if changed.Origin == "none" {
-		fullRun(changed.Detail)
+		fullRun(selection.ReasonNoChanges, changed.Detail)
 	} else if !changed.Complete {
-		fullRun("the changed file list is incomplete: " + changed.Detail)
+		fullRun(selection.ReasonIncompleteChanges, "the changed file list is incomplete: "+changed.Detail)
 	}
 	deps.Debugf("changed files: %d (%s)", len(changed.Files), changed.Detail)
 
@@ -143,7 +144,7 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		o := selection.Owner{File: f}
 		if p, ok := ruleSet.MatchFullRun(f); ok {
 			o.FullRun = p
-			fullRun(fmt.Sprintf("%s changed (rule %s)", f, p))
+			fullRun(selection.ReasonGlobalFile, fmt.Sprintf("%s changed (rule %s)", f, p))
 		} else if ruleSet.MatchIgnore(f) {
 			o.Ignored = true
 		} else {
@@ -163,7 +164,7 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 			return res, err
 		}
 		warn("%v", err)
-		fullRun("project analysis failed: " + err.Error())
+		fullRun(selection.ReasonAnalysisFailed, "project analysis failed: "+err.Error())
 		g = graph.New()
 		g.Finalize()
 	}
@@ -177,7 +178,7 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		if len(owners) == 0 {
 			o.Unknown = true
 			if onUnknown == "full" {
-				fullRun(fmt.Sprintf("%s belongs to no known build unit", f))
+				fullRun(selection.ReasonUnknownFile, fmt.Sprintf("%s belongs to no known build unit", f))
 			}
 			continue
 		}
@@ -219,6 +220,7 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 	}
 	if res.Mode == selection.ModeSelected {
 		res.Reason = fmt.Sprintf("%d changed files mapped onto the project graph", len(changed.Files))
+		res.ReasonKind = selection.ReasonGraph
 	}
 	res.Finalize()
 	if res.Mode == selection.ModeSelected && res.Stats.Candidates > 0 && res.Stats.Selected == 0 {

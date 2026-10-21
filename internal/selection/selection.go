@@ -21,6 +21,26 @@ const (
 	ModeFull Mode = "full"
 )
 
+// ReasonKind classifies Reason without file names, for aggregate reporting.
+type ReasonKind string
+
+const (
+	// ReasonGraph means the changed files were mapped onto the project graph.
+	ReasonGraph ReasonKind = "graph"
+	// ReasonForced means the backend configuration forced a full run.
+	ReasonForced ReasonKind = "forced"
+	// ReasonNoChanges means no changed file list could be obtained.
+	ReasonNoChanges ReasonKind = "no_changes"
+	// ReasonIncompleteChanges means the changed file list was incomplete.
+	ReasonIncompleteChanges ReasonKind = "incomplete_changes"
+	// ReasonGlobalFile means a full-run rule matched a changed file.
+	ReasonGlobalFile ReasonKind = "global_file"
+	// ReasonUnknownFile means a changed file belongs to no build unit.
+	ReasonUnknownFile ReasonKind = "unknown_file"
+	// ReasonAnalysisFailed means the project graph could not be built.
+	ReasonAnalysisFailed ReasonKind = "analysis_failed"
+)
+
 // Version of the output schema.
 const Version = 1
 
@@ -30,6 +50,7 @@ type Result struct {
 	Mode         Mode         `json:"mode"`
 	Shadow       bool         `json:"shadow"`
 	Reason       string       `json:"reason"`
+	ReasonKind   ReasonKind   `json:"reason_kind"`
 	ChangedFiles ChangedFiles `json:"changed_files"`
 	Owners       []Owner      `json:"owners"`
 	Affected     []string     `json:"affected_nodes"`
