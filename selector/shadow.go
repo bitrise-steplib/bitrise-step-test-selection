@@ -155,6 +155,9 @@ func RunShadow(opts ShadowOptions) (rep Report, ok bool) {
 	}
 
 	cfg := opts.Config
+	if cfg.ProjectType == "xcode" && strings.TrimSpace(cfg.ProjectPath) == "" {
+		return finish(DecisionError, ReasonNoProject, "no Xcode project or workspace path is known to this step")
+	}
 	cfg.BaseRef = baseRef
 	cfg.BackendConfig = getenv(ConfigEnvKey)
 	cfg.Mode = "shadow"

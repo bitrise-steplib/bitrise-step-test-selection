@@ -108,6 +108,16 @@ func TestRunShadowNoBase(t *testing.T) {
 	}
 }
 
+func TestRunShadowNoXcodeProject(t *testing.T) {
+	rep, ok := RunShadow(ShadowOptions{
+		Config: Config{ProjectType: "xcode"},
+		Getenv: env(map[string]string{ConfigEnvKey: shadowJSON}),
+	})
+	if !ok || rep.Decision != DecisionError || rep.ReasonKind != ReasonNoProject {
+		t.Fatalf("%+v", rep)
+	}
+}
+
 func TestRunShadowSelects(t *testing.T) {
 	root := flutterRepo(t)
 	var logged []string
