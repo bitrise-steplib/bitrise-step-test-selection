@@ -378,7 +378,8 @@ func (s *Shadow) complete(outcomes []UnitOutcome, testRun time.Duration) {
 	for _, o := range outcomes {
 		i, known := byKey[o.Key]
 		if !known {
-			rep.Units = append(rep.Units, UnitReport{Name: o.Key, key: o.Key})
+			// Outside a selection (forced, no base, error) every unit runs.
+			rep.Units = append(rep.Units, UnitReport{Name: o.Key, key: o.Key, Selected: rep.Decision != string(ModeSelected)})
 			i = len(rep.Units) - 1
 			byKey[o.Key] = i
 		}

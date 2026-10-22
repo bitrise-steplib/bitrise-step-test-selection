@@ -229,6 +229,9 @@ func TestRunShadowForcedFullRunSkipsTheAnalysis(t *testing.T) {
 	if sh.Report.EstimatedSavingMS != 0 || sh.Report.MissedFailure || !sh.Report.OutcomesKnown {
 		t.Fatalf("a forced run saves nothing and misses nothing: %+v", sh.Report)
 	}
+	if len(sh.Report.Units) != 1 || !sh.Report.Units[0].Selected || sh.Report.Units[0].Mapped {
+		t.Errorf("on a forced run every unit runs: %+v", sh.Report.Units)
+	}
 }
 
 func TestRunShadowTimeoutAndPanic(t *testing.T) {
