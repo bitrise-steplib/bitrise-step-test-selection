@@ -125,6 +125,9 @@ inputs:
     title: Backend configuration
     summary: JSON injected by Bitrise with the app's selection settings.
     description: |-
+      Bitrise injects it only for workspaces test selection is enabled for. When it is empty
+      the step does not analyse the project and writes a full run, so every test runs.
+
       JSON with the keys `mode`, `must_run`, `full_run_paths`, `ignore_paths`,
       `on_unknown_file`, `base_ref`, `force_full_run` and `force_full_run_reason`. Lists are
       merged with the inputs; scalar settings override them.

@@ -67,6 +67,21 @@ type Deps struct {
 	Debugf func(format string, v ...interface{})
 }
 
+// NotEnabled is the result for a build Bitrise injected no backend configuration into:
+// test selection is not turned on for its workspace, so every test runs and the project is
+// not analysed.
+func NotEnabled() selection.Result {
+	res := selection.Result{
+		Version:      selection.Version,
+		Mode:         selection.ModeFull,
+		Reason:       "test selection is not enabled for this workspace",
+		ReasonKind:   selection.ReasonNotEnabled,
+		ChangedFiles: selection.ChangedFiles{Origin: "none"},
+	}
+	res.Finalize()
+	return res
+}
+
 // Run computes the selection. It only returns an error when the step must fail; every
 // analysis problem is reported inside the result as a full run instead.
 func Run(cfg Config, deps Deps) (selection.Result, error) {

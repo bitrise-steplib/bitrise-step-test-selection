@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/bitrise-io/go-steputils/v2/export"
 	"github.com/bitrise-io/go-steputils/v2/stepconf"
@@ -46,15 +47,22 @@ func run() int {
 	logger.EnableDebugLog(cfg.Verbose)
 	logger.Println()
 
-	res, err := step.Run(cfg, step.Deps{
-		Git:    gitRunner{cmdFactory},
-		Cmd:    cmdRunner{cmdFactory},
-		Logf:   logger.Printf,
-		Debugf: logger.Debugf,
-	})
-	if err != nil {
-		logger.Errorf("Test selection failed: %s", err)
-		return 1
+	var res selection.Result
+	var err error
+	if strings.TrimSpace(cfg.BackendConfig) == "" {
+		res = step.NotEnabled()
+		logger.Warnf("Test selection is not enabled for this workspace, every test runs.")
+	} else {
+		res, err = step.Run(cfg, step.Deps{
+			Git:    gitRunner{cmdFactory},
+			Cmd:    cmdRunner{cmdFactory},
+			Logf:   logger.Printf,
+			Debugf: logger.Debugf,
+		})
+		if err != nil {
+			logger.Errorf("Test selection failed: %s", err)
+			return 1
+		}
 	}
 
 	outputDir := cfg.OutputDir
