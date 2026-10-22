@@ -139,6 +139,13 @@ func TestBackendConfigOverrides(t *testing.T) {
 	}
 }
 
+func TestNotEnabledRunsEverything(t *testing.T) {
+	res := NotEnabled()
+	if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonNotEnabled || len(res.Tests) != 0 {
+		t.Errorf("got mode=%s kind=%s tests=%d", res.Mode, res.ReasonKind, len(res.Tests))
+	}
+}
+
 func TestIncompleteListWithoutGitFallsBackToFull(t *testing.T) {
 	root := flutterRepo(t)
 	cfg := base(root)

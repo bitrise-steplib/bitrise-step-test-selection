@@ -11,6 +11,9 @@ changed files ──► file rules ──► project graph ──► propagation
 
 ## How it decides
 
+0. **Enablement**: Bitrise injects `BITRISE_TEST_SELECTION_CONFIG_JSON` (the `config` input)
+   only for workspaces test selection is enabled for. Without it the step writes a full run
+   with `reason_kind: not_enabled` and analyses nothing.
 1. **Changed files** come from `BITRISE_GIT_CHANGED_FILES`. When the list is missing or
    marked incomplete, the step diffs `HEAD` against the merge base with `base_ref`,
    deepening the shallow clone the git-clone step leaves behind.
@@ -59,7 +62,7 @@ Next to it, in `selected` mode only: `xcode-only-testing.txt`, `gradle-modules.t
 means "everything" to the consuming steps.
 
 `reason_kind` classifies the decision without file names: `graph`, `forced`, `no_changes`,
-`incomplete_changes`, `global_file`, `unknown_file` or `analysis_failed`.
+`incomplete_changes`, `global_file`, `unknown_file`, `analysis_failed` or `not_enabled`.
 
 ## Using it from a test step (shadow mode)
 

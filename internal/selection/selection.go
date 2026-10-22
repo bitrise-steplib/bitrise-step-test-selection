@@ -39,6 +39,8 @@ const (
 	ReasonUnknownFile ReasonKind = "unknown_file"
 	// ReasonAnalysisFailed means the project graph could not be built.
 	ReasonAnalysisFailed ReasonKind = "analysis_failed"
+	// ReasonNotEnabled means Bitrise has not turned test selection on for the build.
+	ReasonNotEnabled ReasonKind = "not_enabled"
 )
 
 // Version of the output schema.
