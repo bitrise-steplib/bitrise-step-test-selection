@@ -13,6 +13,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/analytics"
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/selection"
 )
 
 const (
@@ -51,6 +53,10 @@ type BackendConfig struct {
 	// because the Gradle analysis costs far more than the Xcode or Flutter one.
 	SampleRates    map[string]float64 `json:"sample_rates"`
 	TimeoutSeconds int                `json:"timeout_seconds"`
+	// ForceFullRun is set for builds that always run every test (the default branch,
+	// release branches, scheduled and manual builds).
+	ForceFullRun       bool   `json:"force_full_run"`
+	ForceFullRunReason string `json:"force_full_run_reason"`
 }
 
 // SampleRateFor returns the sample rate that applies to step.
@@ -233,6 +239,13 @@ func StartShadow(opts ShadowOptions) (sh *Shadow, ok bool) {
 		sh.Report.DurationMS = time.Since(start).Milliseconds()
 		logf("Test selection (shadow, nothing was skipped): %s", detail)
 		return sh, true
+	}
+
+	// The decision is "everything" whatever changed, so the diff and the project graph
+	// would only cost time; the report still goes out so these builds are counted.
+	if bc.ForceFullRun {
+		reason := firstNonEmpty(bc.ForceFullRunReason, "full run forced by the build configuration")
+		return finish(string(ModeFull), selection.ReasonForced, reason+"; nothing was analysed")
 	}
 
 	baseRef := firstNonEmpty(bc.BaseRef, getenv(BaseRefEnvKey), getenv("BITRISEIO_GIT_BRANCH_DEST"))

@@ -210,15 +210,24 @@ func TestRunShadowBaseFromEnv(t *testing.T) {
 	}
 }
 
-func TestRunShadowForcedFullRun(t *testing.T) {
-	root := flutterRepo(t)
-	sh, _ := StartShadow(ShadowOptions{
-		Config: Config{ProjectType: "flutter", RepoDir: root},
-		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","force_full_run":true}`}),
+func TestRunShadowForcedFullRunSkipsTheAnalysis(t *testing.T) {
+	defer func() { run = Run }()
+	run = func(Config, Deps) (Result, error) { panic("the analysis must not run") }
+
+	sh, ok := StartShadow(ShadowOptions{
+		Config: Config{ProjectType: "flutter", RepoDir: flutterRepo(t)},
+		Getenv: env(map[string]string{ConfigEnvKey: `{"mode":"shadow","base_ref":"main","force_full_run":true,"force_full_run_reason":"builds of the default branch run every test"}`}),
 	})
 	rep := sh.Report
-	if rep.Decision != "full" || rep.ReasonKind != "forced" || len(rep.Selected) != 3 {
+	if !ok || rep.Decision != "full" || rep.ReasonKind != ReasonKind("forced") || rep.Candidates != 0 {
 		t.Fatalf("%+v", rep)
+	}
+
+	newTracker = func(func(string) string) analytics.Tracker { return nil }
+	defer func() { newTracker = defaultNewTracker }()
+	sh.Finish([]UnitOutcome{{Key: "packages/core", Tests: 2, Failed: 1, Duration: time.Second}}, 5*time.Second)
+	if sh.Report.EstimatedSavingMS != 0 || sh.Report.MissedFailure || !sh.Report.OutcomesKnown {
+		t.Fatalf("a forced run saves nothing and misses nothing: %+v", sh.Report)
 	}
 }
 

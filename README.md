@@ -105,6 +105,9 @@ The backend configuration accepts the step's `config` fields plus:
 The runner never panics or fails the step. A timeout, a panic or an analysis error becomes
 `"decision": "error"` with a `reason_kind` (`timeout`, `panic`, `failed`, `no_project`).
 Without a base it reports `"decision": "full"` with `reason_kind: "no_base"` and analyses nothing.
+With `force_full_run` (the backend sets it for the default branch, release branches, scheduled and
+manual builds) it reports `"decision": "full"` with `reason_kind: "forced"` and analyses nothing
+either, because every test runs whatever changed.
 
 ### Events
 
