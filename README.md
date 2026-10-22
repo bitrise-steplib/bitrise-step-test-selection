@@ -40,6 +40,7 @@ Any analysis error is a full run with the reason in the log and the JSON, never 
   "mode": "selected",
   "shadow": false,
   "reason": "3 changed files mapped onto the project graph",
+  "reason_kind": "graph",
   "changed_files": {"origin": "git", "complete": true, "base": "…", "count": 3, "files": ["…"]},
   "owners": [{"file": "Modules/Core/Sources/Cache.swift", "nodes": ["spm:Core/Core"]}],
   "affected_nodes": ["spm:Core/Core", "spm:Core/CoreTests", "xcode:App/App", "xcode:App/AppTests"],
@@ -56,6 +57,91 @@ Any analysis error is a full run with the reason in the log and the JSON, never 
 Next to it, in `selected` mode only: `xcode-only-testing.txt`, `gradle-modules.txt`, `gradle-tasks.txt`,
 `flutter-packages.txt`. In `full` mode no list file is written, because an empty list
 means "everything" to the consuming steps.
+
+`reason_kind` classifies the decision without file names: `graph`, `forced`, `no_changes`,
+`incomplete_changes`, `global_file`, `unknown_file` or `analysis_failed`.
+
+## Using it from a test step (shadow mode)
+
+The `selector` package is the importable form of this step. A test step calls
+`selector.StartShadow` before its test run: when the backend injects
+`BITRISE_TEST_SELECTION_CONFIG_JSON` with `"mode": "shadow"`, it computes the selection the
+step would have made and logs one summary line. The step still runs every test. Afterwards
+it reports what each test unit did with `Finish`, which works out the time a selection
+would have saved and whether it would have skipped a failing unit, and publishes both on
+the step analytics channel.
+
+```go
+sh, ok := selector.StartShadow(selector.ShadowOptions{
+	Step:    "xcode-test",
+	Config:  selector.Config{ProjectType: "xcode", ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme},
+	WorkDir: filepath.Dir(cfg.ProjectPath),
+	Keep:    func(t selector.Test, repoDir string) bool { return runs(t.Name) },
+	Logf:    logger.Printf,
+	Debugf:  logger.Debugf,
+})
+started := time.Now()
+runTests()
+if ok {
+	sh.Finish(outcomesPerTarget(), time.Since(started)) // nil outcomes: results unreadable
+}
+```
+
+`selector.UnitKey` names a unit the way `UnitOutcome.Key` must: the Xcode test target, the
+Gradle project path (`:feature:home`) or the Flutter package directory.
+`selector.JUnitOutcome` builds an outcome from JUnit XML files.
+
+The backend configuration accepts the step's `config` fields plus:
+
+| Field | Meaning |
+|---|---|
+| `mode` | Only `shadow` enables the runner. |
+| `base_ref` | Commit or branch to diff against. Falls back to `BITRISE_TEST_SELECTION_BASE_REF`, then to the PR target branch. |
+| `base_build_slug` | The build `base_ref` was taken from, passed through to the events so a failure can be checked against it. |
+| `sample_rate` | Fraction of builds that run the analysis, decided from the build slug. Defaults to every build. |
+| `sample_rates` | Per-step override of `sample_rate`, keyed by step (`xcode-test`, `xcode-test-without-building`, `android-unit-test`, `flutter-test`). |
+| `timeout_seconds` | Analysis time limit, 60 by default. Git and Gradle are killed when it passes. |
+
+The runner never panics or fails the step. A timeout, a panic or an analysis error becomes
+`"decision": "error"` with a `reason_kind` (`timeout`, `panic`, `failed`, `no_project`).
+Without a base it reports `"decision": "full"` with `reason_kind: "no_base"` and analyses nothing.
+With `force_full_run` (the backend sets it for the default branch, release branches, scheduled and
+manual builds) it reports `"decision": "full"` with `reason_kind: "forced"` and analyses nothing
+either, because every test runs whatever changed.
+
+### Events
+
+Both events carry `step_id`, `build_slug`, `app_slug`, `workspace_id`, `decision`,
+`reason_kind`, `base` and `base_build_slug`. They name test units, never files.
+
+- **`test_selection_shadow`**, once per step run: `selected` and `skipped` (comma-separated),
+  `units` (JSON: name, selected, mapped, ran, tests, failed, flaky, duration_ms), `duration_ms`
+  of the analysis, `test_run_ms`, `estimated_saving_ms`, `estimated_saving_by_units_ms`,
+  `missed_failure`, `missed_units`,
+  `flaky_in_skipped`, `outcomes_known`.
+- **`test_selection_missed_failure`**, once per unit that the selection would have skipped
+  although a test in it failed in its final attempt: `unit`, `mapped`, `tests`, `failed`, `flaky`.
+
+The rules behind the numbers, only for `"decision": "selected"`:
+
+- **Saving**, two estimates, because a unit's cost is more than its test cases:
+  - `estimated_saving_ms`, a lower bound: the test case time of the units that ran but would
+    have been skipped. It leaves out compiling a module's tests or launching a test host.
+  - `estimated_saving_by_units_ms`: the test run's wall time split evenly across the units that
+    ran, times the skipped ones.
+  When no selected unit ran, the step itself would have been skipped, so both are the whole
+  test run's wall time. The Flutter step tests one package, so its two numbers are always equal.
+- **Missed failure:** a skipped unit with a test whose final attempt failed. A test that only
+  failed before passing on a retry counts as flaky, not missed.
+- **Unmapped units:** a unit that ran but the analysis did not know (`"mapped": false`) counts as
+  skipped, because a selection would not have run it either.
+
+[`docs/shadow-dashboard.sql`](docs/shadow-dashboard.sql) has the dashboard queries: saving per
+workspace and week, saving per step, the missed failures, and the miss rate.
+
+Set `ANALYTICS_DISABLED=true` to send nothing. The report is printed at debug level, or in
+the normal log together with the analytics client's delivery errors when
+`BITRISE_TEST_SELECTION_SHADOW_VERBOSE=true`.
 
 ## Trying it on a repository
 
