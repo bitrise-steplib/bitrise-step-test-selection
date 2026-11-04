@@ -376,3 +376,58 @@ func keys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// The shapes Xcode 16 writes for file-system-synchronized groups with exception sets.
+const syncedExceptionsPbxproj = `// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	objectVersion = 77;
+	objects = {
+		MAIN = {isa = PBXGroup; children = (APPGRP, TESTSGRP, RESGRP); sourceTree = "<group>"; };
+		APPGRP = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (EXAPP, EXEXT); path = App; sourceTree = "<group>"; };
+		TESTSGRP = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (EXTESTS); path = "App Tests"; sourceTree = "<group>"; };
+		RESGRP = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (EXPHASE); path = Resources; sourceTree = "<group>"; };
+
+		EXAPP = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Info.plist, Shared/Moved.swift); target = APP; };
+		EXEXT = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Shared/Helper.swift, Shared/Moved.swift); target = EXT; };
+		EXTESTS = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (FooTests.swift, "Sub Dir/BarTests.swift"); target = APPTESTS; };
+		EXPHASE = {isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet; buildPhase = SRCTESTS; membershipExceptions = (Fixture.json); };
+
+		SRCTESTS = {isa = PBXSourcesBuildPhase; files = (); };
+
+		APP = {isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; buildPhases = (); fileSystemSynchronizedGroups = (APPGRP); };
+		EXT = {isa = PBXNativeTarget; name = Ext; productType = "com.apple.product-type.app-extension"; buildPhases = (); };
+		APPTESTS = {isa = PBXNativeTarget; name = AppTests; productType = "com.apple.product-type.bundle.unit-test"; buildPhases = (SRCTESTS); };
+
+		PROJ = {isa = PBXProject; mainGroup = MAIN; projectDirPath = ""; targets = (APP, EXT, APPTESTS); };
+	};
+	rootObject = PROJ;
+}
+`
+
+func TestSyncedGroupExceptions(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "App.xcodeproj", "project.pbxproj"), syncedExceptionsPbxproj)
+	g, _, err := Build(Options{Root: root, ProjectPath: "App.xcodeproj"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, want := range map[string][]string{
+		// A group no target lists is owned file by file by the targets its exception sets name.
+		"App Tests/FooTests.swift":         {"xcode:App/AppTests"},
+		"App Tests/Sub Dir/BarTests.swift": {"xcode:App/AppTests"},
+		"App Tests/Unlisted.swift":         nil,
+		"Resources/Fixture.json":           {"xcode:App/AppTests"},
+		// Joining another target does not take the file away from the group's own target.
+		"App/Shared/Helper.swift": {"xcode:App/App", "xcode:App/Ext"},
+		"App/Shared/Moved.swift":  {"xcode:App/Ext"},
+		"App/Views/Home.swift":    {"xcode:App/App"},
+		"App/Info.plist":          {"xcode:App/App"},
+	} {
+		got := g.Owners(file)
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("owners of %q: got %v, want %v", file, got, want)
+		}
+	}
+}
