@@ -1,8 +1,9 @@
-// Package spmdump loads a package description through `swift package dump-package`,
-// the authoritative view of a manifest, for validating the step's own scanner.
+// Package spmdump reads the package description `swift package dump-package` prints,
+// the authoritative view of a manifest.
 package spmdump
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -10,12 +11,14 @@ import (
 	"strings"
 )
 
-// Package is the subset of the dump the validation needs.
+// Package is the subset of the dump the selection needs.
 type Package struct {
 	Dir      string
 	Name     string
 	Targets  []Target
 	Products []Product
+	// LocalDependencies are absolute directories of `.package(path:)` entries.
+	LocalDependencies []string
 }
 
 // Target is one target as SwiftPM sees it.
@@ -37,7 +40,12 @@ type Product struct {
 }
 
 type rawPackage struct {
-	Name    string `json:"name"`
+	Name         string `json:"name"`
+	Dependencies []struct {
+		FileSystem []struct {
+			Path string `json:"path"`
+		} `json:"fileSystem"`
+	} `json:"dependencies"`
 	Targets []struct {
 		Name         string                     `json:"name"`
 		Type         string                     `json:"type"`
@@ -48,6 +56,24 @@ type rawPackage struct {
 		Name    string   `json:"name"`
 		Targets []string `json:"targets"`
 	} `json:"products"`
+}
+
+// underDir re-roots path, which SwiftPM prints with symlinks resolved (/private/var on
+// macOS), onto dir as the caller spelled it, so it compares with the caller's paths.
+func underDir(dir, path string) string {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return path
+	}
+	rel, err := filepath.Rel(real, path)
+	if err != nil {
+		return path
+	}
+	joined := filepath.Join(dir, rel)
+	if resolved, err := filepath.EvalSymlinks(joined); err != nil || resolved != path {
+		return path
+	}
+	return joined
 }
 
 // Load runs dump-package in dir with the given swift binary.
@@ -66,11 +92,41 @@ func Load(swift, dir string) (*Package, error) {
 		}
 		return nil, fmt.Errorf("dump-package in %s: %w\n%s", dir, err, msg)
 	}
+	return Parse(abs, out)
+}
+
+// Parse reads dump-package output for the package in dir. Diagnostics printed before
+// or after the JSON are skipped, so the output may include stderr.
+func Parse(dir string, out []byte) (*Package, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	start := -1
+	for i := 0; i < len(out); {
+		if out[i] == '{' {
+			start = i
+			break
+		}
+		nl := bytes.IndexByte(out[i:], '\n')
+		if nl < 0 {
+			break
+		}
+		i += nl + 1
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("parse dump-package output: no JSON object")
+	}
 	var raw rawPackage
-	if err := json.Unmarshal(out, &raw); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(out[start:])).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("parse dump-package output: %w", err)
 	}
 	pkg := &Package{Dir: abs, Name: raw.Name}
+	for _, dep := range raw.Dependencies {
+		for _, fs := range dep.FileSystem {
+			pkg.LocalDependencies = append(pkg.LocalDependencies, underDir(abs, fs.Path))
+		}
+	}
 	for _, t := range raw.Targets {
 		tg := Target{Name: t.Name, Type: t.Type}
 		if t.Path != nil && *t.Path != "" {

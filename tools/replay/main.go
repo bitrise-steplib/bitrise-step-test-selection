@@ -19,8 +19,8 @@ import (
 	"strings"
 
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/selection"
+	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/spmdump"
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/step"
-	"github.com/bitrise-steplib/bitrise-step-test-selection/tools/internal/spmdump"
 )
 
 type record struct {

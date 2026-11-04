@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"howett.net/plist"
@@ -47,6 +48,105 @@ type Target struct {
 	TestHostProduct string
 	// TestTargetName is TEST_TARGET_NAME for UI test bundles.
 	TestTargetName string
+}
+
+// addPath records a source path. Asset catalogs, data models, localized folders and
+// folder references are single entries in the project but whole directories on disk.
+func (t *Target) addPath(pth string) {
+	if st, err := os.Stat(pth); err == nil && st.IsDir() {
+		t.Dirs = append(t.Dirs, pth)
+	} else {
+		t.Files = append(t.Files, pth)
+	}
+}
+
+// applySyncedGroupExceptions applies the exception sets of file-system-synchronized
+// groups. A build file exception set flips membership for its target: the listed paths
+// leave a target that has the group in fileSystemSynchronizedGroups and join one that
+// does not. A build phase exception set places the paths in one of the phase's target's
+// phases, so they are members of that target either way.
+//
+// Exclusions are not modelled: an excluded path stays owned through the group's
+// directory, which over-selects but never misses a test. An included path is also added
+// to every target that owns the group and does not exclude it, because an exact file
+// match would otherwise take the path away from them.
+func (p *Project) applySyncedGroupExceptions() {
+	byID := map[string]*Target{}
+	byPhase := map[string]*Target{}
+	attached := map[string][]*Target{}
+	for _, t := range p.Targets {
+		byID[t.ID] = t
+		o := p.objects[t.ID]
+		for _, phaseID := range list(o, "buildPhases") {
+			byPhase[phaseID] = t
+		}
+		for _, gid := range list(o, "fileSystemSynchronizedGroups") {
+			attached[gid] = append(attached[gid], t)
+		}
+	}
+	attaches := func(t *Target, gid string) bool {
+		for _, a := range attached[gid] {
+			if a == t {
+				return true
+			}
+		}
+		return false
+	}
+
+	var groupIDs []string
+	for id, o := range p.objects {
+		if str(o, "isa") == "PBXFileSystemSynchronizedRootGroup" && len(list(o, "exceptions")) > 0 {
+			groupIDs = append(groupIDs, id)
+		}
+	}
+	sort.Strings(groupIDs)
+
+	for _, gid := range groupIDs {
+		dir, ok := p.resolvePath(gid)
+		if !ok {
+			continue
+		}
+		excluded := map[*Target]map[string]bool{}
+		type inclusion struct {
+			target *Target
+			rel    string
+		}
+		var included []inclusion
+		for _, eid := range list(p.objects[gid], "exceptions") {
+			e := p.objects[eid]
+			var t *Target
+			excludes := false
+			switch str(e, "isa") {
+			case "PBXFileSystemSynchronizedBuildFileExceptionSet":
+				t = byID[str(e, "target")]
+				excludes = attaches(t, gid)
+			case "PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet":
+				t = byPhase[str(e, "buildPhase")]
+			}
+			if t == nil {
+				continue
+			}
+			for _, rel := range list(e, "membershipExceptions") {
+				if excludes {
+					if excluded[t] == nil {
+						excluded[t] = map[string]bool{}
+					}
+					excluded[t][rel] = true
+				} else {
+					included = append(included, inclusion{t, rel})
+				}
+			}
+		}
+		for _, inc := range included {
+			pth := filepath.Join(dir, inc.rel)
+			inc.target.addPath(pth)
+			for _, owner := range attached[gid] {
+				if owner != inc.target && !excluded[owner][inc.rel] {
+					owner.addPath(pth)
+				}
+			}
+		}
+	}
 }
 
 // ParseProject reads an .xcodeproj bundle.
@@ -118,6 +218,7 @@ func ParseProject(xcodeprojPath string) (*Project, error) {
 			p.Targets = append(p.Targets, t)
 		}
 	}
+	p.applySyncedGroupExceptions()
 	return p, nil
 }
 
@@ -173,13 +274,7 @@ func (p *Project) parseTarget(id string) *Target {
 				continue
 			}
 			if pth, ok := p.resolvePath(refID); ok {
-				// Asset catalogs, data models, localized folders and folder references
-				// are single entries in the project but whole directories on disk.
-				if st, err := os.Stat(pth); err == nil && st.IsDir() {
-					t.Dirs = append(t.Dirs, pth)
-				} else {
-					t.Files = append(t.Files, pth)
-				}
+				t.addPath(pth)
 			}
 		}
 	}

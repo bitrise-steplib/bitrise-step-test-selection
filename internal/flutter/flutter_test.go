@@ -79,3 +79,76 @@ func TestBuild(t *testing.T) {
 		t.Errorf("package dir %q", n.Meta["package_dir"])
 	}
 }
+
+func TestBuildPubspecOverrides(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "pubspec.yaml", "name: app\ndependencies:\n  core: ^1.0.0\n")
+	write(t, root, "pubspec_overrides.yaml", "dependency_overrides:\n  core:\n    path: packages/core\n")
+	write(t, root, "lib/main.dart", "")
+	write(t, root, "packages/core/pubspec.yaml", "name: core\n")
+
+	g, err := Build(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(g.Dependents(g.Owners("packages/core/lib/core.dart")))
+	if !reflect.DeepEqual(got, []string{"flutter:app", "flutter:core"}) {
+		t.Errorf("dependents of core: %v", got)
+	}
+	if owners := g.Owners("pubspec_overrides.yaml"); !reflect.DeepEqual(owners, []string{"flutter:app"}) {
+		t.Errorf("pubspec_overrides.yaml owner %v", owners)
+	}
+}
+
+func TestBuildWorkspace(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "pubspec.yaml", "name: repo\nworkspace:\n  - packages/a\n  - packages/b\n  - packages/c\n")
+	write(t, root, "packages/a/pubspec.yaml", "name: a\nresolution: workspace\ndependencies:\n  b: ^2.0.0\ndev_dependencies:\n  c: any\n")
+	write(t, root, "packages/a/test/a_test.dart", "")
+	write(t, root, "packages/b/pubspec.yaml", "name: b\nresolution: workspace\n")
+	write(t, root, "packages/c/pubspec.yaml", "name: c\nresolution: workspace\n")
+
+	g, err := Build(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(g.Dependents(g.Owners("packages/b/lib/b.dart")))
+	if !reflect.DeepEqual(got, []string{"flutter:a", "flutter:a:test", "flutter:b"}) {
+		t.Errorf("dependents of b: %v", got)
+	}
+	// A dev dependency only reaches the tests.
+	got = keys(g.Dependents(g.Owners("packages/c/lib/c.dart")))
+	if !reflect.DeepEqual(got, []string{"flutter:a:test", "flutter:c"}) {
+		t.Errorf("dependents of c: %v", got)
+	}
+}
+
+func TestBuildHostedLocalDependency(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "packages/api/pubspec.yaml", "name: api\ndependencies:\n  flutter:\n    sdk: flutter\n  api_dart: \">=0.5.20 <0.6.0\"\n  forked:\n    git:\n      url: https://example.com/forked.git\n  hosted_map:\n    hosted: https://pub.example.com\n    version: ^1.0.0\n  bare:\n")
+	write(t, root, "packages/api/test/api_test.dart", "")
+	write(t, root, "packages/api_dart/pubspec.yaml", "name: api_dart\n")
+	write(t, root, "packages/forked/pubspec.yaml", "name: forked\n")
+	write(t, root, "packages/hosted_map/pubspec.yaml", "name: hosted_map\n")
+	write(t, root, "packages/bare/pubspec.yaml", "name: bare\n")
+	write(t, root, "packages/flutter/pubspec.yaml", "name: flutter\n")
+
+	g, err := Build(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dep := range []string{"api_dart", "hosted_map", "bare"} {
+		got := keys(g.Dependents(g.Owners("packages/" + dep + "/lib/x.dart")))
+		want := []string{"flutter:api", "flutter:api:test", "flutter:" + dep}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("dependents of %s: %v", dep, got)
+		}
+	}
+	// git and sdk dependencies never resolve to the working tree.
+	for _, dep := range []string{"forked", "flutter"} {
+		got := keys(g.Dependents(g.Owners("packages/" + dep + "/lib/x.dart")))
+		if !reflect.DeepEqual(got, []string{"flutter:" + dep}) {
+			t.Errorf("dependents of %s: %v", dep, got)
+		}
+	}
+}

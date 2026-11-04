@@ -1,0 +1,331 @@
+{
+  "cLanguageStandard" : null,
+  "cxxLanguageStandard" : null,
+  "defaultLocalization" : null,
+  "dependencies" : [
+    {
+      "sourceControl" : [
+        {
+          "identity" : "alamofire",
+          "location" : {
+            "remote" : [
+              {
+                "urlString" : "https://github.com/Alamofire/Alamofire"
+              }
+            ]
+          },
+          "productFilter" : null,
+          "requirement" : {
+            "range" : [
+              {
+                "lowerBound" : "5.0.0",
+                "upperBound" : "6.0.0"
+              }
+            ]
+          },
+          "traits" : [
+            {
+              "name" : "default"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fileSystem" : [
+        {
+          "identity" : "tools",
+          "path" : "@ROOT@/Tools",
+          "productFilter" : null,
+          "traits" : [
+            {
+              "name" : "default"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name" : "Modules",
+  "packageKind" : {
+    "root" : [
+      "@ROOT@/Modules"
+    ]
+  },
+  "pkgConfig" : null,
+  "platforms" : [
+
+  ],
+  "products" : [
+    {
+      "name" : "XcodeTarget_App",
+      "settings" : [
+
+      ],
+      "targets" : [
+        "XcodeTarget_App"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "XcodeTarget_AppTests",
+      "settings" : [
+
+      ],
+      "targets" : [
+        "XcodeTarget_AppTests"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "Feature",
+      "settings" : [
+
+      ],
+      "targets" : [
+        "Feature"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "XcodeTarget_Widget",
+      "settings" : [
+
+      ],
+      "targets" : [
+        "XcodeTarget_Widget"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "providers" : null,
+  "swiftLanguageVersions" : null,
+  "targets" : [
+    {
+      "dependencies" : [
+        {
+          "byName" : [
+            "Feature",
+            null
+          ]
+        },
+        {
+          "product" : [
+            "Alamofire",
+            "Alamofire",
+            null,
+            null
+          ]
+        }
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "XcodeTarget_App",
+      "packageAccess" : true,
+      "path" : "Sources/XcodeSupport/XcodeTarget_App",
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+        {
+          "byName" : [
+            "Mocks",
+            null
+          ]
+        },
+        {
+          "target" : [
+            "XcodeTarget_App",
+            null
+          ]
+        }
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "XcodeTarget_AppTests",
+      "packageAccess" : true,
+      "path" : "Sources/XcodeSupport/XcodeTarget_AppTests",
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+        {
+          "target" : [
+            "Shared",
+            null
+          ]
+        },
+        {
+          "product" : [
+            "Alamofire",
+            "Alamofire",
+            null,
+            null
+          ]
+        },
+        {
+          "byName" : [
+            "Charts",
+            null
+          ]
+        }
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "XcodeTarget_Widget",
+      "packageAccess" : true,
+      "path" : "Sources/XcodeSupport/XcodeTarget_Widget",
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "Charts",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "Feature",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "Mocks",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "Shared",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "Unlinked",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "regular"
+    },
+    {
+      "dependencies" : [
+        {
+          "byName" : [
+            "Feature",
+            null
+          ]
+        }
+      ],
+      "exclude" : [
+
+      ],
+      "name" : "FeatureTests",
+      "packageAccess" : true,
+      "resources" : [
+
+      ],
+      "settings" : [
+
+      ],
+      "type" : "test"
+    }
+  ],
+  "toolsVersion" : {
+    "_version" : "6.0.0"
+  },
+  "traits" : [
+
+  ]
+}

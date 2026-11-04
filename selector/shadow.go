@@ -267,6 +267,9 @@ func StartShadow(opts ShadowOptions) (sh *Shadow, ok bool) {
 	if cfg.OnUnknownFile == "" {
 		cfg.OnUnknownFile = "full"
 	}
+	if cfg.FullRunThreshold == 0 {
+		cfg.FullRunThreshold = DefaultFullRunThreshold
+	}
 	if cfg.ProjectType == "" {
 		cfg.ProjectType = "auto"
 	}

@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/spmdump"
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/xcode"
-	"github.com/bitrise-steplib/bitrise-step-test-selection/tools/internal/spmdump"
 )
 
 func main() {

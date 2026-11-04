@@ -6,8 +6,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/go-steputils/v2/stepconf"
+	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/selection"
+	"gopkg.in/yaml.v3"
 )
+
+// TestStepYMLDefaultsParse feeds every input's step.yml default, plus the
+// full_run_threshold values a user may type, through the same parser main uses.
+func TestStepYMLDefaultsParse(t *testing.T) {
+	data, err := os.ReadFile("../../step.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Inputs []map[string]interface{} `yaml:"inputs"`
+	}
+	if err := yaml.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BITRISE_SOURCE_DIR", t.TempDir())
+	defaults := map[string]string{}
+	for _, in := range spec.Inputs {
+		for key, v := range in {
+			if key == "opts" {
+				continue
+			}
+			s, _ := v.(string)
+			defaults[key] = os.ExpandEnv(s)
+		}
+	}
+
+	for _, threshold := range []string{defaults["full_run_threshold"], "0", "1", "0.5"} {
+		for key, v := range defaults {
+			t.Setenv(key, v)
+		}
+		t.Setenv("full_run_threshold", threshold)
+		var cfg Config
+		if err := stepconf.NewInputParser(env.NewRepository()).Parse(&cfg); err != nil {
+			t.Errorf("full_run_threshold=%q: %v", threshold, err)
+		}
+	}
+}
 
 func write(t *testing.T, root, name, content string) {
 	t.Helper()
@@ -143,6 +183,132 @@ func TestNotEnabledRunsEverything(t *testing.T) {
 	res := NotEnabled()
 	if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonNotEnabled || len(res.Tests) != 0 {
 		t.Errorf("got mode=%s kind=%s tests=%d", res.Mode, res.ReasonKind, len(res.Tests))
+	}
+}
+
+func TestFullRunThreshold(t *testing.T) {
+	run := func(t *testing.T, changed, mustRun string, threshold float64) selection.Result {
+		t.Helper()
+		cfg := base(flutterRepo(t))
+		cfg.ChangedFiles = changed
+		cfg.MustRun = mustRun
+		cfg.FullRunThreshold = threshold
+		res, err := Run(cfg, Deps{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	allSelected := func(t *testing.T, res selection.Result) {
+		t.Helper()
+		for _, tc := range res.Tests {
+			if !tc.Selected || tc.Reason != "full run" {
+				t.Errorf("%s: selected=%v reason=%q", tc.ID, tc.Selected, tc.Reason)
+			}
+		}
+		if res.Stats.Selected != res.Stats.Candidates || res.Stats.Skipped != 0 {
+			t.Errorf("stats %+v", res.Stats)
+		}
+	}
+
+	t.Run("below the threshold stays selected", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "", 0.7)
+		if res.Mode != selection.ModeSelected || res.ReasonKind != selection.ReasonGraph || res.Stats.Selected != 2 {
+			t.Errorf("mode %s kind %s stats %+v", res.Mode, res.ReasonKind, res.Stats)
+		}
+	})
+
+	t.Run("above the threshold is a full run", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "", 0.6)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected {
+			t.Fatalf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+		if !strings.Contains(res.Reason, "2 of 3 test units") || !strings.Contains(res.Reason, "0.6") {
+			t.Errorf("reason %q", res.Reason)
+		}
+		allSelected(t, res)
+		files, err := selection.Write(t.TempDir(), res)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if files.FlutterPackages != "" {
+			t.Errorf("a full run must not write a list file, got %s", files.FlutterPackages)
+		}
+	})
+
+	t.Run("at the threshold is a full run", func(t *testing.T) {
+		cfg := base(t.TempDir())
+		cfg.ManualRules = "Scripts/** => A, B\nFastlane/** => C, D"
+		cfg.ChangedFiles = "Scripts/x.rb"
+		cfg.FullRunThreshold = 0.5
+		res, err := Run(cfg, Deps{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected || !strings.Contains(res.Reason, "2 of 4") {
+			t.Errorf("mode %s kind %s reason %q", res.Mode, res.ReasonKind, res.Reason)
+		}
+	})
+
+	t.Run("zero disables it", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "core tests", 0)
+		if res.Mode != selection.ModeSelected || res.Stats.Selected != 3 {
+			t.Errorf("mode %s stats %+v", res.Mode, res.Stats)
+		}
+	})
+
+	t.Run("must-run units count as selected", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "core tests", 1)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected {
+			t.Fatalf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+		allSelected(t, res)
+		if res.Stats.MustRun != 0 {
+			t.Errorf("a full run has no must-run units, got %+v", res.Stats)
+		}
+	})
+
+	t.Run("an empty selection stays selected", func(t *testing.T) {
+		res := run(t, "README.md\n", "", 0.6)
+		if res.Mode != selection.ModeSelected || res.Stats.Selected != 0 {
+			t.Errorf("mode %s stats %+v", res.Mode, res.Stats)
+		}
+	})
+
+	t.Run("an earlier full-run reason is kept", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\npubspec.lock\n", "", 0.6)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonGlobalFile {
+			t.Errorf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+	})
+}
+
+func TestBackendFullRunThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		input   float64
+		backend string
+		want    selection.Mode
+		warning bool
+	}{
+		{name: "backend enables it", input: 0, backend: `{"full_run_threshold":0.6}`, want: selection.ModeFull},
+		{name: "backend zero disables it", input: 0.6, backend: `{"full_run_threshold":0}`, want: selection.ModeSelected},
+		{name: "absent key keeps the input", input: 0.6, backend: `{"mode":"enforce"}`, want: selection.ModeFull},
+		{name: "out of range is ignored", input: 0.7, backend: `{"full_run_threshold":2}`, want: selection.ModeSelected, warning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := base(flutterRepo(t))
+			cfg.ChangedFiles = "packages/ui/lib/button.dart\n"
+			cfg.FullRunThreshold = tc.input
+			cfg.BackendConfig = tc.backend
+			res, err := Run(cfg, Deps{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Mode != tc.want || (len(res.Errors) > 0) != tc.warning {
+				t.Errorf("mode %s errors %v", res.Mode, res.Errors)
+			}
+		})
 	}
 }
 

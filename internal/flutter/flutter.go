@@ -1,8 +1,9 @@
 // Package flutter builds the package graph of a Dart/Flutter repository from the
-// pubspec.yaml files it contains and their path dependencies.
+// pubspec.yaml files it contains and the dependencies between them.
 package flutter
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,11 +30,16 @@ type pubspec struct {
 	Overrides    map[string]interface{} `yaml:"dependency_overrides"`
 }
 
+const overridesFile = "pubspec_overrides.yaml"
+
 type pkg struct {
 	name    string
 	dir     string // absolute
 	deps    []string
 	devDeps []string
+	// Hosted dependencies, by name.
+	hosted    []string
+	devHosted []string
 }
 
 // Build scans dir (relative to root) for packages and returns their graph.
@@ -72,10 +78,12 @@ func Build(root, dir string) (*graph.Graph, error) {
 	}
 
 	byDir := map[string]string{}
+	byName := map[string]string{}
 	g := graph.New()
 	for _, pk := range pkgs {
 		id := "flutter:" + pk.name
 		byDir[pk.dir] = id
+		byName[pk.name] = id
 		relDir, ok := rel(root, pk.dir)
 		if !ok {
 			continue
@@ -94,7 +102,7 @@ func Build(root, dir string) (*graph.Graph, error) {
 		g.Add(&graph.Node{
 			ID: id, Name: pk.name, Kind: graph.KindSource, Ecosystem: "flutter",
 			Dirs:  dirs,
-			Files: map[string]bool{path.Join(relDir, "pubspec.yaml"): true},
+			Files: map[string]bool{path.Join(relDir, "pubspec.yaml"): true, path.Join(relDir, overridesFile): true},
 			Meta:  map[string]string{"package_dir": relDir},
 		})
 		var testDirs []string
@@ -111,21 +119,56 @@ func Build(root, dir string) (*graph.Graph, error) {
 			})
 		}
 	}
-	for _, pk := range pkgs {
-		id := "flutter:" + pk.name
-		for _, d := range pk.deps {
+	link := func(from string, dirs, names []string) {
+		for _, d := range dirs {
 			if to, ok := byDir[d]; ok {
-				g.AddDep(id, to)
+				g.AddDep(from, to)
 			}
 		}
-		for _, d := range pk.devDeps {
-			if to, ok := byDir[d]; ok {
-				g.AddDep(id+":test", to)
+		for _, n := range names {
+			if to, ok := byName[n]; ok {
+				g.AddDep(from, to)
 			}
 		}
 	}
+	for _, pk := range pkgs {
+		id := "flutter:" + pk.name
+		link(id, pk.deps, pk.hosted)
+		link(id+":test", pk.devDeps, pk.devHosted)
+	}
 	g.Finalize()
 	return g, nil
+}
+
+// readOverrides returns the dependency_overrides of the pubspec_overrides.yaml in dir,
+// which melos and aft generate to link the repository's packages to each other.
+func readOverrides(dir string) (map[string]interface{}, error) {
+	p := filepath.Join(dir, overridesFile)
+	data, err := os.ReadFile(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var ps pubspec
+	if err := yaml.Unmarshal(data, &ps); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", p, err)
+	}
+	return ps.Overrides, nil
+}
+
+// hostedDeps returns the names of dependencies resolved by version rather than from
+// a path, git or the SDK.
+func hostedDeps(deps map[string]interface{}) []string {
+	var out []string
+	for name, v := range deps {
+		if m, ok := v.(map[string]interface{}); ok && (m["path"] != nil || m["git"] != nil || m["sdk"] != nil) {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
 }
 
 func parse(path string) (*pkg, error) {
@@ -138,12 +181,22 @@ func parse(path string) (*pkg, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	dir := filepath.Dir(path)
+	overrides, err := readOverrides(dir)
+	if err != nil {
+		return nil, err
+	}
 	pk := &pkg{name: ps.Name, dir: dir}
 	if pk.name == "" {
 		pk.name = filepath.Base(dir)
 	}
 	pk.deps = append(pathDeps(dir, ps.Dependencies), pathDeps(dir, ps.Overrides)...)
+	pk.deps = append(pk.deps, pathDeps(dir, overrides)...)
 	pk.devDeps = pathDeps(dir, ps.DevDeps)
+	// A hosted dependency on a package in the repository is an edge too. Pub workspaces
+	// resolve it to the local package, and melos, aft and flutter/packages' CI rewrite
+	// it to a path dependency before running the tests.
+	pk.hosted = hostedDeps(ps.Dependencies)
+	pk.devHosted = hostedDeps(ps.DevDeps)
 	return pk, nil
 }
 
