@@ -41,6 +41,9 @@ const (
 	ReasonAnalysisFailed ReasonKind = "analysis_failed"
 	// ReasonNotEnabled means Bitrise has not turned test selection on for the build.
 	ReasonNotEnabled ReasonKind = "not_enabled"
+	// ReasonMostlySelected means the share of selected test units reached the full-run
+	// threshold.
+	ReasonMostlySelected ReasonKind = "mostly_selected"
 )
 
 // Version of the output schema.

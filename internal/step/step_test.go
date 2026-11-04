@@ -146,6 +146,132 @@ func TestNotEnabledRunsEverything(t *testing.T) {
 	}
 }
 
+func TestFullRunThreshold(t *testing.T) {
+	run := func(t *testing.T, changed, mustRun string, threshold float64) selection.Result {
+		t.Helper()
+		cfg := base(flutterRepo(t))
+		cfg.ChangedFiles = changed
+		cfg.MustRun = mustRun
+		cfg.FullRunThreshold = threshold
+		res, err := Run(cfg, Deps{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	allSelected := func(t *testing.T, res selection.Result) {
+		t.Helper()
+		for _, tc := range res.Tests {
+			if !tc.Selected || tc.Reason != "full run" {
+				t.Errorf("%s: selected=%v reason=%q", tc.ID, tc.Selected, tc.Reason)
+			}
+		}
+		if res.Stats.Selected != res.Stats.Candidates || res.Stats.Skipped != 0 {
+			t.Errorf("stats %+v", res.Stats)
+		}
+	}
+
+	t.Run("below the threshold stays selected", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "", 0.7)
+		if res.Mode != selection.ModeSelected || res.ReasonKind != selection.ReasonGraph || res.Stats.Selected != 2 {
+			t.Errorf("mode %s kind %s stats %+v", res.Mode, res.ReasonKind, res.Stats)
+		}
+	})
+
+	t.Run("above the threshold is a full run", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "", 0.6)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected {
+			t.Fatalf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+		if !strings.Contains(res.Reason, "2 of 3 test units") || !strings.Contains(res.Reason, "0.6") {
+			t.Errorf("reason %q", res.Reason)
+		}
+		allSelected(t, res)
+		files, err := selection.Write(t.TempDir(), res)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if files.FlutterPackages != "" {
+			t.Errorf("a full run must not write a list file, got %s", files.FlutterPackages)
+		}
+	})
+
+	t.Run("at the threshold is a full run", func(t *testing.T) {
+		cfg := base(t.TempDir())
+		cfg.ManualRules = "Scripts/** => A, B\nFastlane/** => C, D"
+		cfg.ChangedFiles = "Scripts/x.rb"
+		cfg.FullRunThreshold = 0.5
+		res, err := Run(cfg, Deps{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected || !strings.Contains(res.Reason, "2 of 4") {
+			t.Errorf("mode %s kind %s reason %q", res.Mode, res.ReasonKind, res.Reason)
+		}
+	})
+
+	t.Run("zero disables it", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "core tests", 0)
+		if res.Mode != selection.ModeSelected || res.Stats.Selected != 3 {
+			t.Errorf("mode %s stats %+v", res.Mode, res.Stats)
+		}
+	})
+
+	t.Run("must-run units count as selected", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\n", "core tests", 1)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonMostlySelected {
+			t.Fatalf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+		allSelected(t, res)
+		if res.Stats.MustRun != 0 {
+			t.Errorf("a full run has no must-run units, got %+v", res.Stats)
+		}
+	})
+
+	t.Run("an empty selection stays selected", func(t *testing.T) {
+		res := run(t, "README.md\n", "", 0.6)
+		if res.Mode != selection.ModeSelected || res.Stats.Selected != 0 {
+			t.Errorf("mode %s stats %+v", res.Mode, res.Stats)
+		}
+	})
+
+	t.Run("an earlier full-run reason is kept", func(t *testing.T) {
+		res := run(t, "packages/ui/lib/button.dart\npubspec.lock\n", "", 0.6)
+		if res.Mode != selection.ModeFull || res.ReasonKind != selection.ReasonGlobalFile {
+			t.Errorf("mode %s kind %s", res.Mode, res.ReasonKind)
+		}
+	})
+}
+
+func TestBackendFullRunThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		input   float64
+		backend string
+		want    selection.Mode
+		warning bool
+	}{
+		{name: "backend enables it", input: 0, backend: `{"full_run_threshold":0.6}`, want: selection.ModeFull},
+		{name: "backend zero disables it", input: 0.6, backend: `{"full_run_threshold":0}`, want: selection.ModeSelected},
+		{name: "absent key keeps the input", input: 0.6, backend: `{"mode":"enforce"}`, want: selection.ModeFull},
+		{name: "out of range is ignored", input: 0.7, backend: `{"full_run_threshold":2}`, want: selection.ModeSelected, warning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := base(flutterRepo(t))
+			cfg.ChangedFiles = "packages/ui/lib/button.dart\n"
+			cfg.FullRunThreshold = tc.input
+			cfg.BackendConfig = tc.backend
+			res, err := Run(cfg, Deps{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Mode != tc.want || (len(res.Errors) > 0) != tc.warning {
+				t.Errorf("mode %s errors %v", res.Mode, res.Errors)
+			}
+		})
+	}
+}
+
 func TestIncompleteListWithoutGitFallsBackToFull(t *testing.T) {
 	root := flutterRepo(t)
 	cfg := base(root)

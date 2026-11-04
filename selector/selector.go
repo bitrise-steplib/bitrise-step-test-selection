@@ -37,6 +37,10 @@ const (
 	ModeFull     = selection.ModeFull
 )
 
+// DefaultFullRunThreshold is the share of selected test units at which a selection
+// becomes a full run, when Config.FullRunThreshold is 0.
+const DefaultFullRunThreshold = step.DefaultFullRunThreshold
+
 // Run computes the selection. It only returns an error when cfg.OnError is "fail";
 // every analysis problem is otherwise reported as a full run inside the result.
 func Run(cfg Config, deps Deps) (Result, error) {

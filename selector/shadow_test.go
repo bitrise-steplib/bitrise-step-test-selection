@@ -198,6 +198,31 @@ func TestRunShadowAbsoluteProjectDir(t *testing.T) {
 	}
 }
 
+func TestRunShadowFullRunThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		backend string
+		want    string
+	}{
+		{name: "the default applies", backend: `{"mode":"shadow","base_ref":"main","must_run":["core tests"]}`, want: "full"},
+		{name: "the backend switches it off", backend: `{"mode":"shadow","base_ref":"main","must_run":["core tests"],"full_run_threshold":0}`, want: "selected"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, _ := StartShadow(ShadowOptions{
+				Config: Config{ProjectType: "flutter", RepoDir: flutterRepo(t)},
+				Getenv: env(map[string]string{ConfigEnvKey: tc.backend}),
+			})
+			rep := sh.Report
+			if rep.Decision != tc.want || rep.Candidates != 3 || len(rep.Skipped) != 0 {
+				t.Fatalf("%+v", rep)
+			}
+			if tc.want == "full" && rep.ReasonKind != ReasonKind("mostly_selected") {
+				t.Errorf("reason kind %s", rep.ReasonKind)
+			}
+		})
+	}
+}
+
 func TestRunShadowBaseFromEnv(t *testing.T) {
 	root := flutterRepo(t)
 	sh, _ := StartShadow(ShadowOptions{

@@ -19,30 +19,35 @@ import (
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/xcode"
 )
 
+// DefaultFullRunThreshold is the default share of selected test units at which a
+// selection becomes a full run.
+const DefaultFullRunThreshold = 0.9
+
 // Config holds the step inputs.
 type Config struct {
-	ChangedFiles         string `env:"changed_files"`
-	ChangedFilesComplete string `env:"changed_files_complete"`
-	BaseRef              string `env:"base_ref"`
-	ProjectType          string `env:"project_type,opt[auto,xcode,gradle,flutter,manual]"`
-	ProjectPath          string `env:"project_path"`
-	Scheme               string `env:"scheme"`
-	GradleProjectDir     string `env:"gradle_project_dir"`
-	GradlewPath          string `env:"gradlew_path"`
-	GradleOptions        string `env:"gradle_options"`
-	GradleTestTask       string `env:"gradle_test_task"`
-	FlutterProjectDir    string `env:"flutter_project_dir"`
-	ManualRules          string `env:"manual_rules"`
-	BackendConfig        string `env:"config"`
-	FullRunPaths         string `env:"full_run_paths"`
-	IgnorePaths          string `env:"ignore_paths"`
-	MustRun              string `env:"must_run"`
-	OnUnknownFile        string `env:"on_unknown_file,opt[full,ignore]"`
-	Mode                 string `env:"mode,opt[enforce,shadow]"`
-	OnError              string `env:"on_error,opt[full,fail]"`
-	RepoDir              string `env:"repo_dir,dir"`
-	OutputDir            string `env:"output_dir"`
-	Verbose              bool   `env:"verbose,opt[true,false]"`
+	ChangedFiles         string  `env:"changed_files"`
+	ChangedFilesComplete string  `env:"changed_files_complete"`
+	BaseRef              string  `env:"base_ref"`
+	ProjectType          string  `env:"project_type,opt[auto,xcode,gradle,flutter,manual]"`
+	ProjectPath          string  `env:"project_path"`
+	Scheme               string  `env:"scheme"`
+	GradleProjectDir     string  `env:"gradle_project_dir"`
+	GradlewPath          string  `env:"gradlew_path"`
+	GradleOptions        string  `env:"gradle_options"`
+	GradleTestTask       string  `env:"gradle_test_task"`
+	FlutterProjectDir    string  `env:"flutter_project_dir"`
+	ManualRules          string  `env:"manual_rules"`
+	BackendConfig        string  `env:"config"`
+	FullRunPaths         string  `env:"full_run_paths"`
+	IgnorePaths          string  `env:"ignore_paths"`
+	MustRun              string  `env:"must_run"`
+	OnUnknownFile        string  `env:"on_unknown_file,opt[full,ignore]"`
+	FullRunThreshold     float64 `env:"full_run_threshold,range[0..1]"`
+	Mode                 string  `env:"mode,opt[enforce,shadow]"`
+	OnError              string  `env:"on_error,opt[full,fail]"`
+	RepoDir              string  `env:"repo_dir,dir"`
+	OutputDir            string  `env:"output_dir"`
+	Verbose              bool    `env:"verbose,opt[true,false]"`
 }
 
 // backendConfig is the JSON the Bitrise backend injects, mirroring the inputs. Lists
@@ -54,9 +59,11 @@ type backendConfig struct {
 	FullRunPaths  []string `json:"full_run_paths"`
 	IgnorePaths   []string `json:"ignore_paths"`
 	OnUnknownFile string   `json:"on_unknown_file"`
-	ForceFullRun  bool     `json:"force_full_run"`
-	ForceReason   string   `json:"force_full_run_reason"`
-	BaseRef       string   `json:"base_ref"`
+	// A pointer, so that an explicit 0 can switch the threshold off.
+	FullRunThreshold *float64 `json:"full_run_threshold"`
+	ForceFullRun     bool     `json:"force_full_run"`
+	ForceReason      string   `json:"force_full_run_reason"`
+	BaseRef          string   `json:"base_ref"`
 }
 
 // Deps are the step's side effects, replaceable in tests.
@@ -125,6 +132,14 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 	onUnknown := cfg.OnUnknownFile
 	if backend.OnUnknownFile != "" {
 		onUnknown = backend.OnUnknownFile
+	}
+	threshold := cfg.FullRunThreshold
+	if t := backend.FullRunThreshold; t != nil {
+		if *t >= 0 && *t <= 1 {
+			threshold = *t
+		} else {
+			warn("config full_run_threshold %v is outside 0..1 and was ignored", *t)
+		}
 	}
 	baseRef := cfg.BaseRef
 	if backend.BaseRef != "" {
@@ -238,6 +253,17 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		res.ReasonKind = selection.ReasonGraph
 	}
 	res.Finalize()
+	if res.Mode == selection.ModeSelected && threshold > 0 && res.Stats.Candidates > 0 &&
+		float64(res.Stats.Selected) >= threshold*float64(res.Stats.Candidates) {
+		// The consuming steps run a long explicit task list slower than their single
+		// aggregate task, so a near-complete selection saves nothing.
+		fullRun(selection.ReasonMostlySelected, fmt.Sprintf("%d of %d test units are selected, at or above the full-run threshold of %g", res.Stats.Selected, res.Stats.Candidates, threshold))
+		for i := range res.Tests {
+			res.Tests[i].Selected = true
+			res.Tests[i].Reason = "full run"
+		}
+		res.Finalize()
+	}
 	if res.Mode == selection.ModeSelected && res.Stats.Candidates > 0 && res.Stats.Selected == 0 {
 		deps.Logf("no test unit is affected by this change; the consuming steps decide what an empty selection means")
 	}

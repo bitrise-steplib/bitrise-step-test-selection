@@ -129,8 +129,8 @@ inputs:
       the step does not analyse the project and writes a full run, so every test runs.
 
       JSON with the keys `mode`, `must_run`, `full_run_paths`, `ignore_paths`,
-      `on_unknown_file`, `base_ref`, `force_full_run` and `force_full_run_reason`. Lists are
-      merged with the inputs; scalar settings override them.
+      `on_unknown_file`, `full_run_threshold`, `base_ref`, `force_full_run` and
+      `force_full_run_reason`. Lists are merged with the inputs; scalar settings override them.
 - full_run_paths: ""
   opts:
     category: Rules
@@ -158,6 +158,18 @@ inputs:
     value_options:
     - full
     - ignore
+- full_run_threshold: "0.9"
+  opts:
+    category: Rules
+    title: Full-run threshold
+    summary: Share of selected test units (0 to 1) at which the step writes a full run instead. `0` turns it off.
+    description: |-
+      When at least this share of the candidate test units is selected (must-run units
+      included), the step writes a full run with `reason_kind` `mostly_selected`. A test step
+      runs a long explicit task list slower than its single aggregate task, so a selection that
+      skips almost nothing saves nothing. The share is taken over every candidate of every
+      ecosystem, because the result has one mode. `0` or empty never turns a selection into a
+      full run.
 - mode: enforce
   opts:
     category: Rules
