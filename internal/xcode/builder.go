@@ -18,6 +18,16 @@ type Options struct {
 	// Scheme restricts the candidate test targets to the scheme's testables. Empty
 	// means every test target is a candidate.
 	Scheme string
+	// Swift is the swift binary used to read Package.swift manifests through Cmd. When
+	// either is unset, or dump-package fails, the built-in scanner reads the manifest.
+	Swift string
+	Cmd   Runner
+	Logf  func(format string, v ...interface{})
+}
+
+// Runner runs a command in a directory and returns its combined output.
+type Runner interface {
+	Run(dir, name string, args ...string) (string, error)
 }
 
 // Build returns the graph of the workspace or project plus every local Swift package
@@ -117,7 +127,7 @@ func Build(opts Options) (g *graph.Graph, candidates []string, err error) {
 			}
 		}
 	}
-	packages, err := loadPackages(packageDirs)
+	packages, err := loadPackages(packageDirs, root, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -226,9 +236,9 @@ func Build(opts Options) (g *graph.Graph, candidates []string, err error) {
 	return g, candidates, nil
 }
 
-// loadPackages parses every package directory and follows `.package(path:)`
+// loadPackages reads every package directory and follows `.package(path:)`
 // references to other local packages.
-func loadPackages(dirs []string) ([]*Package, error) {
+func loadPackages(dirs []string, root string, opts Options) ([]*Package, error) {
 	seen := map[string]bool{}
 	var out []*Package
 	queue := append([]string{}, dirs...)
@@ -246,7 +256,7 @@ func loadPackages(dirs []string) ([]*Package, error) {
 		if _, err := os.Stat(filepath.Join(abs, "Package.swift")); err != nil {
 			continue
 		}
-		pkg, err := ParsePackage(abs)
+		pkg, err := loadPackage(abs, root, opts)
 		if err != nil {
 			return nil, err
 		}

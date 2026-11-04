@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -318,7 +319,8 @@ func buildGraph(cfg Config, root string, deps Deps) (*graph.Graph, []string, err
 	var candidates []string
 	var used []string
 	if useXcode {
-		xg, c, err := xcode.Build(xcode.Options{Root: root, ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme})
+		swift, _ := exec.LookPath("swift")
+		xg, c, err := xcode.Build(xcode.Options{Root: root, ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme, Swift: swift, Cmd: deps.Cmd, Logf: deps.Logf})
 		if err != nil {
 			return nil, nil, fmt.Errorf("xcode: %w", err)
 		}
