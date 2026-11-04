@@ -6,8 +6,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/go-steputils/v2/stepconf"
+	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-steplib/bitrise-step-test-selection/internal/selection"
+	"gopkg.in/yaml.v3"
 )
+
+// TestStepYMLDefaultsParse feeds every input's step.yml default, plus the
+// full_run_threshold values a user may type, through the same parser main uses.
+func TestStepYMLDefaultsParse(t *testing.T) {
+	data, err := os.ReadFile("../../step.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Inputs []map[string]interface{} `yaml:"inputs"`
+	}
+	if err := yaml.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BITRISE_SOURCE_DIR", t.TempDir())
+	defaults := map[string]string{}
+	for _, in := range spec.Inputs {
+		for key, v := range in {
+			if key == "opts" {
+				continue
+			}
+			s, _ := v.(string)
+			defaults[key] = os.ExpandEnv(s)
+		}
+	}
+
+	for _, threshold := range []string{defaults["full_run_threshold"], "0", "1", "0.5"} {
+		for key, v := range defaults {
+			t.Setenv(key, v)
+		}
+		t.Setenv("full_run_threshold", threshold)
+		var cfg Config
+		if err := stepconf.NewInputParser(env.NewRepository()).Parse(&cfg); err != nil {
+			t.Errorf("full_run_threshold=%q: %v", threshold, err)
+		}
+	}
+}
 
 func write(t *testing.T, root, name, content string) {
 	t.Helper()

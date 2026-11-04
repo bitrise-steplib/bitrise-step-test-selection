@@ -43,7 +43,7 @@ type Config struct {
 	IgnorePaths          string  `env:"ignore_paths"`
 	MustRun              string  `env:"must_run"`
 	OnUnknownFile        string  `env:"on_unknown_file,opt[full,ignore]"`
-	FullRunThreshold     float64 `env:"full_run_threshold,range[0..1]"`
+	FullRunThreshold     float64 `env:"full_run_threshold"`
 	Mode                 string  `env:"mode,opt[enforce,shadow]"`
 	OnError              string  `env:"on_error,opt[full,fail]"`
 	RepoDir              string  `env:"repo_dir,dir"`
@@ -135,6 +135,10 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		onUnknown = backend.OnUnknownFile
 	}
 	threshold := cfg.FullRunThreshold
+	if threshold < 0 || threshold > 1 {
+		warn("input full_run_threshold %v is outside 0..1, using %v", threshold, DefaultFullRunThreshold)
+		threshold = DefaultFullRunThreshold
+	}
 	if t := backend.FullRunThreshold; t != nil {
 		if *t >= 0 && *t <= 1 {
 			threshold = *t
