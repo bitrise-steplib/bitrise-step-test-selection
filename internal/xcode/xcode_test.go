@@ -140,6 +140,7 @@ const planScheme = `<?xml version="1.0" encoding="UTF-8"?>
    <TestAction buildConfiguration = "Debug">
       <TestPlans>
          <TestPlanReference reference = "container:Plans/Unit.xctestplan" default = "YES"></TestPlanReference>
+         <TestPlanReference reference = "container:Plans/UI.xctestplan"></TestPlanReference>
       </TestPlans>
    </TestAction>
 </Scheme>
@@ -173,6 +174,7 @@ func fixture(t *testing.T) string {
 	writeFile(t, filepath.Join(root, "App.xcodeproj", "xcshareddata", "xcschemes", "App.xcscheme"), scheme)
 	writeFile(t, filepath.Join(root, "App.xcodeproj", "xcshareddata", "xcschemes", "Plan.xcscheme"), planScheme)
 	writeFile(t, filepath.Join(root, "Plans", "Unit.xctestplan"), testPlan)
+	writeFile(t, filepath.Join(root, "Plans", "UI.xctestplan"), `{"testTargets": [{"target": {"containerPath": "container:App.xcodeproj", "identifier": "UITESTS", "name": "AppUITests"}}], "version": 1}`)
 	writeFile(t, filepath.Join(root, "Packages", "Networking", "Package.swift"), networkingManifest)
 	writeFile(t, filepath.Join(root, "Packages", "Logging", "Package.swift"), loggingManifest)
 	writeFile(t, filepath.Join(root, "Packages", "Legacy", "Package.swift"), `// swift-tools-version:5.9
@@ -275,21 +277,35 @@ func TestParsePackage(t *testing.T) {
 
 func TestTestables(t *testing.T) {
 	root := fixture(t)
-	got, err := Testables("App", []string{filepath.Join(root, "App.xcodeproj")})
+	containers := []string{filepath.Join(root, "App.xcodeproj")}
+	got, err := Testables("App", "", containers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, []string{"AppTests"}) {
 		t.Errorf("testables %v", got)
 	}
-	got, err = Testables("Plan", []string{filepath.Join(root, "App.xcodeproj")})
+	got, err = Testables("Plan", "", containers)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, []string{"AppTests", "NetworkingTests"}) {
+	if !reflect.DeepEqual(got, []string{"AppTests", "NetworkingTests", "AppUITests"}) {
 		t.Errorf("plan testables %v", got)
 	}
-	if got, _ := Testables("Missing", []string{filepath.Join(root, "App.xcodeproj")}); got != nil {
+	got, err = Testables("Plan", "UI", containers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{"AppUITests"}) {
+		t.Errorf("UI plan testables %v", got)
+	}
+	if _, err := Testables("Plan", "Missing", containers); err == nil {
+		t.Error("a test plan the scheme does not reference should be an error")
+	}
+	if _, err := Testables("App", "UI", containers); err == nil {
+		t.Error("a test plan on a scheme without test plans should be an error")
+	}
+	if got, _ := Testables("Missing", "", containers); got != nil {
 		t.Errorf("missing scheme should give nil, got %v", got)
 	}
 }
@@ -329,6 +345,11 @@ func TestBuildGraph(t *testing.T) {
 	}
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("nodes %v", ids)
+	}
+	for id, kind := range map[string]string{"xcode:App/AppUITests": "ui", "xcode:App/AppTests": "unit", "spm:Logging/LoggingTests": "unit", "xcode:App/App": ""} {
+		if got := g.Node(id).Meta["kind"]; got != kind {
+			t.Errorf("%s kind %q, want %q", id, got, kind)
+		}
 	}
 
 	// A change in the Logging package reaches the app and its tests through

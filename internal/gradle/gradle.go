@@ -258,7 +258,7 @@ func BuildFromDumpWithTask(root, projectDir string, data []byte, androidUnitTest
 		}
 		if len(androidDirs) > 0 {
 			id := moduleID + ":androidTest"
-			g.Add(&graph.Node{ID: id, Name: p.Path + " instrumented tests", Kind: graph.KindTest, Ecosystem: "gradle", Dirs: androidDirs, Deps: []string{moduleID}, Meta: map[string]string{"module": p.Path, "task": p.Path + ":connectedAndroidTest", "kind": "instrumented"}})
+			g.Add(&graph.Node{ID: id, Name: p.Path + " instrumented tests", Kind: graph.KindTest, Ecosystem: "gradle", Dirs: androidDirs, Deps: []string{moduleID}, Meta: map[string]string{"module": p.Path, "task": p.Path + ":connectedAndroidTest", "kind": "ui"}})
 		}
 	}
 

@@ -50,23 +50,29 @@ func TestBuild(t *testing.T) {
 	for _, n := range g.Nodes() {
 		ids = append(ids, n.ID)
 	}
-	want := []string{"flutter:app", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
+	want := []string{"flutter:app", "flutter:app:integration_test", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("nodes %v", ids)
 	}
 
 	got := keys(g.Dependents(g.Owners("packages/core/lib/core.dart")))
-	want = []string{"flutter:app", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
+	want = []string{"flutter:app", "flutter:app:integration_test", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dependents of core: %v", got)
 	}
 	// A dev dependency only reaches the tests.
 	got = keys(g.Dependents(g.Owners("packages/test_support/lib/support.dart")))
-	if !reflect.DeepEqual(got, []string{"flutter:app:test", "flutter:test_support"}) {
+	if !reflect.DeepEqual(got, []string{"flutter:app:integration_test", "flutter:app:test", "flutter:test_support"}) {
 		t.Errorf("dependents of test_support: %v", got)
 	}
-	if owners := g.Owners("integration_test/app_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:test"}) {
+	if owners := g.Owners("integration_test/app_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:integration_test"}) {
 		t.Errorf("integration test owner %v", owners)
+	}
+	if owners := g.Owners("test/widget_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:test"}) {
+		t.Errorf("unit test owner %v", owners)
+	}
+	if n := g.Node("flutter:app:integration_test"); n.Meta["kind"] != "ui" || n.Meta["package_dir"] != "." {
+		t.Errorf("integration test meta %v", n.Meta)
 	}
 	if owners := g.Owners("lib/main.dart"); !reflect.DeepEqual(owners, []string{"flutter:app"}) {
 		t.Errorf("lib owner %v", owners)
@@ -120,6 +126,32 @@ func TestBuildWorkspace(t *testing.T) {
 	got = keys(g.Dependents(g.Owners("packages/c/lib/c.dart")))
 	if !reflect.DeepEqual(got, []string{"flutter:a:test", "flutter:c"}) {
 		t.Errorf("dependents of c: %v", got)
+	}
+}
+
+func TestBuildDuplicatePackageNames(t *testing.T) {
+	root := t.TempDir()
+	for _, p := range []string{"packages/quick_actions_android", "packages/quick_actions_ios"} {
+		write(t, root, p+"/pubspec.yaml", "name: "+filepath.Base(p)+"\n")
+		write(t, root, p+"/example/pubspec.yaml", "name: quick_actions_example\ndependencies:\n  "+filepath.Base(p)+":\n    path: ../\n")
+		write(t, root, p+"/example/integration_test/app_test.dart", "")
+	}
+
+	g, err := Build(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	android := "flutter:quick_actions_example@packages/quick_actions_android/example"
+	ios := "flutter:quick_actions_example@packages/quick_actions_ios/example"
+	for id, dir := range map[string]string{android: "packages/quick_actions_android/example", ios: "packages/quick_actions_ios/example"} {
+		if n := g.Node(id + ":integration_test"); n == nil || n.Meta["package_dir"] != dir {
+			t.Errorf("%s: want a unit for %s, got %+v", id, dir, n)
+		}
+	}
+	got := keys(g.Dependents(g.Owners("packages/quick_actions_android/lib/quick_actions_android.dart")))
+	want := []string{"flutter:quick_actions_android", android, android + ":integration_test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dependents of quick_actions_android: %v, want %v", got, want)
 	}
 }
 

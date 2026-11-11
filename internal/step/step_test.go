@@ -3,6 +3,7 @@ package step
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -83,6 +84,40 @@ func selected(res selection.Result) map[string]bool {
 		out[t.ID] = t.Selected
 	}
 	return out
+}
+
+func TestTestKindRestrictsCandidates(t *testing.T) {
+	root := flutterRepo(t)
+	write(t, root, "integration_test/app_test.dart", "")
+	write(t, root, "packages/ui/integration_test/ui_flow_test.dart", "")
+
+	for _, tc := range []struct {
+		kind string
+		want map[string]bool
+	}{
+		{"all", map[string]bool{"flutter:app:test": true, "flutter:app:integration_test": true, "flutter:core:test": false, "flutter:ui:test": true, "flutter:ui:integration_test": true}},
+		{"unit", map[string]bool{"flutter:app:test": true, "flutter:core:test": false, "flutter:ui:test": true}},
+		{"ui", map[string]bool{"flutter:app:integration_test": true, "flutter:ui:integration_test": true}},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			cfg := base(root)
+			cfg.TestKind = tc.kind
+			cfg.FullRunThreshold = 0
+			cfg.ChangedFiles = "packages/ui/lib/button.dart\n"
+			res, err := Run(cfg, Deps{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := selected(res); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("selection %v, want %v", got, tc.want)
+			}
+			for _, test := range res.Tests {
+				if wantKind := map[bool]string{true: "ui", false: "unit"}[strings.HasSuffix(test.ID, ":integration_test")]; test.Kind != wantKind {
+					t.Errorf("%s kind %q, want %q", test.ID, test.Kind, wantKind)
+				}
+			}
+		})
+	}
 }
 
 func TestSelectsDependents(t *testing.T) {
@@ -364,5 +399,28 @@ func TestManualRules(t *testing.T) {
 	data, _ := os.ReadFile(files.XcodeOnlyTesting)
 	if strings.TrimSpace(string(data)) != "ScriptTests" {
 		t.Errorf("only-testing file: %q", data)
+	}
+}
+
+func TestWriteGradleTaskList(t *testing.T) {
+	gradleTest := func(task string, selected bool) selection.Test {
+		return selection.Test{ID: task, Ecosystem: "gradle", Selected: selected, Ident: selection.Identifiers{GradleTask: task}}
+	}
+	res := selection.Result{Version: selection.Version, Mode: selection.ModeSelected, Tests: []selection.Test{
+		gradleTest(":app:connectedAndroidTest", true),
+		gradleTest(":core:connectedAndroidTest", true),
+		gradleTest(":feature:connectedAndroidTest", false),
+	}}
+	files, err := selection.Write(t.TempDir(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.GradleTaskList != ":app:connectedAndroidTest :core:connectedAndroidTest" {
+		t.Errorf("task list %q", files.GradleTaskList)
+	}
+
+	res.Mode = selection.ModeFull
+	if files, err = selection.Write(t.TempDir(), res); err != nil || files.GradleTaskList != "" {
+		t.Errorf("full mode should export no task list, got %q (%v)", files.GradleTaskList, err)
 	}
 }

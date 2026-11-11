@@ -84,12 +84,15 @@ type Owner struct {
 
 // Test is one candidate test unit with its decision.
 type Test struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Ecosystem string      `json:"ecosystem"`
-	Selected  bool        `json:"selected"`
-	Reason    string      `json:"reason"`
-	Ident     Identifiers `json:"identifiers"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Ecosystem string `json:"ecosystem"`
+	// Kind is "unit" or "ui" (XCUITest targets, androidTest source sets, Flutter
+	// integration_test folders). Manual rules leave it empty.
+	Kind     string      `json:"kind,omitempty"`
+	Selected bool        `json:"selected"`
+	Reason   string      `json:"reason"`
+	Ident    Identifiers `json:"identifiers"`
 }
 
 // Identifiers are the framework-specific handles the test steps understand.
@@ -149,6 +152,9 @@ type Files struct {
 	GradleModules    string
 	GradleTasks      string
 	FlutterPackages  string
+	// GradleTaskList holds the same tasks as GradleTasks, space-separated, for step inputs
+	// that take a task list rather than a file (Gradle Runner's gradle_task).
+	GradleTaskList string
 }
 
 // Write stores the JSON and the per-ecosystem list files in dir. In full mode no list
@@ -199,6 +205,7 @@ func Write(dir string, r Result) (Files, error) {
 	if files.GradleTasks, err = write("gradle-tasks.txt", gradleTasks); err != nil {
 		return files, err
 	}
+	files.GradleTaskList = strings.Join(dedupe(gradleTasks), " ")
 	if files.FlutterPackages, err = write("flutter-packages.txt", flutter); err != nil {
 		return files, err
 	}

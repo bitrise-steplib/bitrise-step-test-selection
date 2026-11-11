@@ -67,6 +67,12 @@ func TestBuildFromDump(t *testing.T) {
 	if !reflect.DeepEqual(tests, want) {
 		t.Fatalf("test nodes %v", tests)
 	}
+	if k := g.Node("gradle::app:androidTest").Meta["kind"]; k != "ui" {
+		t.Errorf("androidTest kind %q", k)
+	}
+	if k := g.Node("gradle::app:unitTest").Meta["kind"]; k != "unit" {
+		t.Errorf("unitTest kind %q", k)
+	}
 
 	// A core change reaches every module and test that depends on it.
 	got := keys(g.Dependents(g.Owners("android/core/src/main/kotlin/Core.kt")))
