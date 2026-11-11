@@ -32,6 +32,13 @@ type pubspec struct {
 
 const overridesFile = "pubspec_overrides.yaml"
 
+// testUnits are the test folders of a package. Integration tests run on a device, so
+// they are a unit of their own that a UI test run can select without the unit tests.
+var testUnits = []struct{ dir, idSuffix, nameSuffix, kind string }{
+	{"test", ":test", " tests", "unit"},
+	{"integration_test", ":integration_test", " integration tests", "ui"},
+}
+
 type pkg struct {
 	name    string
 	dir     string // absolute
@@ -105,17 +112,14 @@ func Build(root, dir string) (*graph.Graph, error) {
 			Files: map[string]bool{path.Join(relDir, "pubspec.yaml"): true, path.Join(relDir, overridesFile): true},
 			Meta:  map[string]string{"package_dir": relDir},
 		})
-		var testDirs []string
-		for _, td := range []string{"test", "integration_test"} {
-			if st, err := os.Stat(filepath.Join(pk.dir, td)); err == nil && st.IsDir() {
-				testDirs = append(testDirs, path.Join(relDir, td))
+		for _, unit := range testUnits {
+			if st, err := os.Stat(filepath.Join(pk.dir, unit.dir)); err != nil || !st.IsDir() {
+				continue
 			}
-		}
-		if len(testDirs) > 0 {
 			g.Add(&graph.Node{
-				ID: id + ":test", Name: pk.name + " tests", Kind: graph.KindTest, Ecosystem: "flutter",
-				Dirs: testDirs, Deps: []string{id},
-				Meta: map[string]string{"package_dir": relDir},
+				ID: id + unit.idSuffix, Name: pk.name + unit.nameSuffix, Kind: graph.KindTest, Ecosystem: "flutter",
+				Dirs: []string{path.Join(relDir, unit.dir)}, Deps: []string{id},
+				Meta: map[string]string{"package_dir": relDir, "kind": unit.kind},
 			})
 		}
 	}
@@ -134,7 +138,9 @@ func Build(root, dir string) (*graph.Graph, error) {
 	for _, pk := range pkgs {
 		id := "flutter:" + pk.name
 		link(id, pk.deps, pk.hosted)
-		link(id+":test", pk.devDeps, pk.devHosted)
+		for _, unit := range testUnits {
+			link(id+unit.idSuffix, pk.devDeps, pk.devHosted)
+		}
 	}
 	g.Finalize()
 	return g, nil

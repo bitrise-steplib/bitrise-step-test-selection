@@ -119,6 +119,23 @@ inputs:
       as-is in the output, so name them the way the consuming step expects (for xcodebuild,
       the test target name).
 
+- test_kind: all
+  opts:
+    category: Project
+    title: Test kind
+    summary: Which test units are candidates - unit tests, UI tests, or both.
+    description: |-
+      `ui` covers XCUITest targets, Android `androidTest` source sets and Flutter
+      `integration_test` folders. `unit` covers every other test unit. Units from manual rules
+      have no kind and are candidates either way.
+
+      Set it to match the test step that consumes the selection, so a unit test step gets no
+      UI test units and a UI test step gets no unit test units.
+    value_options:
+    - all
+    - unit
+    - ui
+
 - config: $BITRISE_TEST_SELECTION_CONFIG_JSON
   opts:
     category: Rules
@@ -230,7 +247,11 @@ outputs:
 - BITRISE_TEST_SELECTION_GRADLE_TASKS_PATH:
   opts:
     title: Gradle tasks file
-    summary: 'Newline-separated Gradle unit test tasks to run, for example `:core:test`, ready for `./gradlew $(cat file)`. Not set in full mode.'
+    summary: 'Newline-separated Gradle test tasks to run, for example `:core:test` or `:app:connectedAndroidTest`, ready for `./gradlew $(cat file)`. Not set in full mode.'
+- BITRISE_TEST_SELECTION_GRADLE_TASKS:
+  opts:
+    title: Gradle tasks
+    summary: 'The same tasks, space-separated, for inputs that take a task list, such as the Gradle Runner step''s `gradle_task`. Not set in full mode or when nothing is selected.'
 - BITRISE_TEST_SELECTION_FLUTTER_PACKAGES_PATH:
   opts:
     title: Flutter packages file

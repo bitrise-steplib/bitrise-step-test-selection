@@ -330,6 +330,11 @@ func TestBuildGraph(t *testing.T) {
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("nodes %v", ids)
 	}
+	for id, kind := range map[string]string{"xcode:App/AppUITests": "ui", "xcode:App/AppTests": "unit", "spm:Logging/LoggingTests": "unit", "xcode:App/App": ""} {
+		if got := g.Node(id).Meta["kind"]; got != kind {
+			t.Errorf("%s kind %q, want %q", id, got, kind)
+		}
+	}
 
 	// A change in the Logging package reaches the app and its tests through
 	// Networking → App, and the SPM test targets on the way.

@@ -92,6 +92,10 @@ func Build(opts Options) (g *graph.Graph, candidates []string, err error) {
 			}
 			if t.IsTest {
 				n.Kind = graph.KindTest
+				n.Meta["kind"] = "unit"
+				if strings.Contains(t.ProductType, "ui-testing") {
+					n.Meta["kind"] = "ui"
+				}
 			}
 			if pbxproj != "" {
 				n.Files[pbxproj] = true
@@ -140,6 +144,7 @@ func Build(opts Options) (g *graph.Graph, candidates []string, err error) {
 			n := &graph.Node{ID: id, Name: t.Name, Kind: graph.KindSource, Ecosystem: "spm", Meta: map[string]string{"package": pkg.Name}}
 			if t.IsTest {
 				n.Kind = graph.KindTest
+				n.Meta["kind"] = "unit"
 			}
 			if rel, ok := relTo(root, t.Path); ok {
 				n.Dirs = []string{rel}

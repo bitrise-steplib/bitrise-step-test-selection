@@ -38,6 +38,7 @@ type Config struct {
 	GradleTestTask       string  `env:"gradle_test_task"`
 	FlutterProjectDir    string  `env:"flutter_project_dir"`
 	ManualRules          string  `env:"manual_rules"`
+	TestKind             string  `env:"test_kind,opt[all,unit,ui]"`
 	BackendConfig        string  `env:"config"`
 	FullRunPaths         string  `env:"full_run_paths"`
 	IgnorePaths          string  `env:"ignore_paths"`
@@ -235,7 +236,11 @@ func Run(cfg Config, deps Deps) (selection.Result, error) {
 		if candidates != nil && (n.Ecosystem == "xcode" || n.Ecosystem == "spm") && !contains(candidates, n.Name) {
 			continue
 		}
-		t := selection.Test{ID: n.ID, Name: n.Name, Ecosystem: n.Ecosystem, Ident: identifiers(n)}
+		kind := n.Meta["kind"]
+		if cfg.TestKind != "" && cfg.TestKind != "all" && kind != "" && kind != cfg.TestKind {
+			continue
+		}
+		t := selection.Test{ID: n.ID, Name: n.Name, Ecosystem: n.Ecosystem, Kind: kind, Ident: identifiers(n)}
 		switch {
 		case res.Mode == selection.ModeFull:
 			t.Selected = true

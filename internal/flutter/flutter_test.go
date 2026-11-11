@@ -50,23 +50,29 @@ func TestBuild(t *testing.T) {
 	for _, n := range g.Nodes() {
 		ids = append(ids, n.ID)
 	}
-	want := []string{"flutter:app", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
+	want := []string{"flutter:app", "flutter:app:integration_test", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("nodes %v", ids)
 	}
 
 	got := keys(g.Dependents(g.Owners("packages/core/lib/core.dart")))
-	want = []string{"flutter:app", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
+	want = []string{"flutter:app", "flutter:app:integration_test", "flutter:app:test", "flutter:core", "flutter:core:test", "flutter:test_support", "flutter:ui"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dependents of core: %v", got)
 	}
 	// A dev dependency only reaches the tests.
 	got = keys(g.Dependents(g.Owners("packages/test_support/lib/support.dart")))
-	if !reflect.DeepEqual(got, []string{"flutter:app:test", "flutter:test_support"}) {
+	if !reflect.DeepEqual(got, []string{"flutter:app:integration_test", "flutter:app:test", "flutter:test_support"}) {
 		t.Errorf("dependents of test_support: %v", got)
 	}
-	if owners := g.Owners("integration_test/app_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:test"}) {
+	if owners := g.Owners("integration_test/app_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:integration_test"}) {
 		t.Errorf("integration test owner %v", owners)
+	}
+	if owners := g.Owners("test/widget_test.dart"); !reflect.DeepEqual(owners, []string{"flutter:app:test"}) {
+		t.Errorf("unit test owner %v", owners)
+	}
+	if n := g.Node("flutter:app:integration_test"); n.Meta["kind"] != "ui" || n.Meta["package_dir"] != "." {
+		t.Errorf("integration test meta %v", n.Meta)
 	}
 	if owners := g.Owners("lib/main.dart"); !reflect.DeepEqual(owners, []string{"flutter:app"}) {
 		t.Errorf("lib owner %v", owners)
