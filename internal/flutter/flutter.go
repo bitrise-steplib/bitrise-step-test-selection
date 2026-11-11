@@ -84,13 +84,30 @@ func Build(root, dir string) (*graph.Graph, error) {
 		return nil, fmt.Errorf("no pubspec.yaml found under %s", dir)
 	}
 
+	// Package names are not unique in a monorepo (flutter/packages has nine packages
+	// named `example`). A duplicated name gets its directory in the ID; otherwise the
+	// packages would merge into one unit that runs only one folder's tests.
+	nameCount := map[string]int{}
+	for _, pk := range pkgs {
+		nameCount[pk.name]++
+	}
+	idOf := func(pk *pkg) string {
+		id := "flutter:" + pk.name
+		if nameCount[pk.name] > 1 {
+			if relDir, ok := rel(root, pk.dir); ok {
+				id += "@" + relDir
+			}
+		}
+		return id
+	}
+
 	byDir := map[string]string{}
-	byName := map[string]string{}
+	byName := map[string][]string{}
 	g := graph.New()
 	for _, pk := range pkgs {
-		id := "flutter:" + pk.name
+		id := idOf(pk)
 		byDir[pk.dir] = id
-		byName[pk.name] = id
+		byName[pk.name] = append(byName[pk.name], id)
 		relDir, ok := rel(root, pk.dir)
 		if !ok {
 			continue
@@ -129,14 +146,15 @@ func Build(root, dir string) (*graph.Graph, error) {
 				g.AddDep(from, to)
 			}
 		}
+		// A hosted dependency on a duplicated name links to every package of that name.
 		for _, n := range names {
-			if to, ok := byName[n]; ok {
+			for _, to := range byName[n] {
 				g.AddDep(from, to)
 			}
 		}
 	}
 	for _, pk := range pkgs {
-		id := "flutter:" + pk.name
+		id := idOf(pk)
 		link(id, pk.deps, pk.hosted)
 		for _, unit := range testUnits {
 			link(id+unit.idSuffix, pk.devDeps, pk.devHosted)

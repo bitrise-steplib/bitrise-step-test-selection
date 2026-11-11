@@ -129,6 +129,32 @@ func TestBuildWorkspace(t *testing.T) {
 	}
 }
 
+func TestBuildDuplicatePackageNames(t *testing.T) {
+	root := t.TempDir()
+	for _, p := range []string{"packages/quick_actions_android", "packages/quick_actions_ios"} {
+		write(t, root, p+"/pubspec.yaml", "name: "+filepath.Base(p)+"\n")
+		write(t, root, p+"/example/pubspec.yaml", "name: quick_actions_example\ndependencies:\n  "+filepath.Base(p)+":\n    path: ../\n")
+		write(t, root, p+"/example/integration_test/app_test.dart", "")
+	}
+
+	g, err := Build(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	android := "flutter:quick_actions_example@packages/quick_actions_android/example"
+	ios := "flutter:quick_actions_example@packages/quick_actions_ios/example"
+	for id, dir := range map[string]string{android: "packages/quick_actions_android/example", ios: "packages/quick_actions_ios/example"} {
+		if n := g.Node(id + ":integration_test"); n == nil || n.Meta["package_dir"] != dir {
+			t.Errorf("%s: want a unit for %s, got %+v", id, dir, n)
+		}
+	}
+	got := keys(g.Dependents(g.Owners("packages/quick_actions_android/lib/quick_actions_android.dart")))
+	want := []string{"flutter:quick_actions_android", android, android + ":integration_test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dependents of quick_actions_android: %v, want %v", got, want)
+	}
+}
+
 func TestBuildHostedLocalDependency(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "packages/api/pubspec.yaml", "name: api\ndependencies:\n  flutter:\n    sdk: flutter\n  api_dart: \">=0.5.20 <0.6.0\"\n  forked:\n    git:\n      url: https://example.com/forked.git\n  hosted_map:\n    hosted: https://pub.example.com\n    version: ^1.0.0\n  bare:\n")
