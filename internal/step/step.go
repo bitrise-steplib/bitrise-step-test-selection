@@ -32,6 +32,7 @@ type Config struct {
 	ProjectType          string  `env:"project_type,opt[auto,xcode,gradle,flutter,manual]"`
 	ProjectPath          string  `env:"project_path"`
 	Scheme               string  `env:"scheme"`
+	TestPlan             string  `env:"test_plan"`
 	GradleProjectDir     string  `env:"gradle_project_dir"`
 	GradlewPath          string  `env:"gradlew_path"`
 	GradleOptions        string  `env:"gradle_options"`
@@ -329,7 +330,7 @@ func buildGraph(cfg Config, root string, deps Deps) (*graph.Graph, []string, err
 	var used []string
 	if useXcode {
 		swift, _ := exec.LookPath("swift")
-		xg, c, err := xcode.Build(xcode.Options{Root: root, ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme, Swift: swift, Cmd: deps.Cmd, Logf: deps.Logf})
+		xg, c, err := xcode.Build(xcode.Options{Root: root, ProjectPath: cfg.ProjectPath, Scheme: cfg.Scheme, TestPlan: cfg.TestPlan, Swift: swift, Cmd: deps.Cmd, Logf: deps.Logf})
 		if err != nil {
 			return nil, nil, fmt.Errorf("xcode: %w", err)
 		}

@@ -12,7 +12,10 @@ import (
 // Testables returns the test target names a scheme runs, resolving test plans when
 // the scheme uses them. containers are the .xcworkspace / .xcodeproj bundles the
 // scheme may live in. Returns nil, nil when the scheme is not found.
-func Testables(scheme string, containers []string) ([]string, error) {
+//
+// A non-empty testPlan keeps only that plan's targets: xcodebuild runs one plan, so a
+// target of another plan must not be handed to its -only-testing.
+func Testables(scheme, testPlan string, containers []string) ([]string, error) {
 	schemePath, container := findScheme(scheme, containers)
 	if schemePath == "" {
 		return nil, nil
@@ -43,6 +46,10 @@ func Testables(scheme string, containers []string) ([]string, error) {
 		return nil, fmt.Errorf("parse scheme %s: %w", schemePath, err)
 	}
 
+	if testPlan != "" && len(doc.TestAction.TestPlans.Refs) == 0 {
+		return nil, fmt.Errorf("test plan %s requested, but scheme %s uses no test plans", testPlan, scheme)
+	}
+
 	var names []string
 	for _, r := range doc.TestAction.Testables.Refs {
 		if strings.EqualFold(r.Skipped, "YES") {
@@ -53,18 +60,26 @@ func Testables(scheme string, containers []string) ([]string, error) {
 		}
 	}
 
-	// Test plans replace the testables list; every referenced plan may be run, so the
-	// candidates are the union of their targets.
+	// Test plans replace the testables list; without a requested plan every referenced
+	// plan may be run, so the candidates are the union of their targets.
+	planFound := false
 	for _, ref := range doc.TestAction.TestPlans.Refs {
 		planPath := resolveLocation(ref.Reference, filepath.Dir(container), filepath.Dir(container))
 		if planPath == "" {
 			continue
 		}
+		if testPlan != "" && strings.TrimSuffix(filepath.Base(planPath), ".xctestplan") != testPlan {
+			continue
+		}
+		planFound = true
 		planTargets, err := testPlanTargets(planPath)
 		if err != nil {
 			return nil, err
 		}
 		names = append(names, planTargets...)
+	}
+	if testPlan != "" && !planFound {
+		return nil, fmt.Errorf("test plan %s is not referenced by scheme %s", testPlan, scheme)
 	}
 	return dedupe(names), nil
 }

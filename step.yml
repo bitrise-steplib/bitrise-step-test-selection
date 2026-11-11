@@ -78,6 +78,15 @@ inputs:
     description: |-
       When set and found, only the test targets the scheme (or its test plans) runs are
       candidates. Leave empty to consider every test target.
+- test_plan: ""
+  opts:
+    category: Project
+    title: Xcode test plan
+    summary: Restricts the candidates to one test plan of the scheme. Use the same plan as the Xcode test step.
+    description: |-
+      The test plan name without `.xctestplan`. xcodebuild runs one plan, so a target of
+      another plan in the same scheme must not be selected for it. Requires `scheme`. A plan
+      the scheme does not reference is an analysis error, so the run falls back to every test.
 - gradle_project_dir: ""
   opts:
     category: Project

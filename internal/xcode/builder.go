@@ -18,6 +18,8 @@ type Options struct {
 	// Scheme restricts the candidate test targets to the scheme's testables. Empty
 	// means every test target is a candidate.
 	Scheme string
+	// TestPlan further restricts them to one of the scheme's test plans.
+	TestPlan string
 	// Swift is the swift binary used to read Package.swift manifests through Cmd. When
 	// either is unset, or dump-package fails, the built-in scanner reads the manifest.
 	Swift string
@@ -233,7 +235,7 @@ func Build(opts Options) (g *graph.Graph, candidates []string, err error) {
 	g.Finalize()
 
 	if opts.Scheme != "" {
-		candidates, err = Testables(opts.Scheme, containers)
+		candidates, err = Testables(opts.Scheme, opts.TestPlan, containers)
 		if err != nil {
 			return nil, nil, err
 		}
